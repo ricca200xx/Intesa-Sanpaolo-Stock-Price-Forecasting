@@ -1,0 +1,23 @@
+Fase 1: 
+Acquisizione dati (Yahoo Finance)
+Gestione dei giorni mancanti (weekends/festivi) tramite na.locf
+Creazione oggetti ts con frequenza 365
+Split in train (80%) e test (20%)
+Visualizzazione grafica della serie storica completa
+
+Fase 2: 
+Visualizzazione ACF e PACF della serie originale
+Visualizzazione ACF e PACF della serie differenziata
+
+
+Fase 3:
+
+Modello 1: Utilizzo di auto.arima (senza stagionalità) per trovare i parametri (p,d,q) migliori.
+Modello 2: prophet, diffusion, GAM
+Modello 3: ARIMAX (ricavato)
+Diagnostica Residui: Verifica che i residui dei modelli siano WN (ACF dei residui e test Ljung-Box).
+
+Fase 4: 
+Generazione dei forecast per l'orizzonte temporale.
+Calcolo metriche di errore (RMSE, MAE, MAPE) confrontando Previsioni vs Dati Reali.
+Grafico finale comparativo
