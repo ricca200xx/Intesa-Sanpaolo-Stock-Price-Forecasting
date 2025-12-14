@@ -292,14 +292,33 @@ cat("------------------------------------------------\n")
 # 4. Previsione
 pred_gam_test <- predict(best_gam_model, newdata = gam_data_test)
 
-# 5. Visualizzazione Risultato GAM
-plot(gam_data_train$t, gam_data_train$y, type="l", col="gray", 
-     main="GAM Best Fit vs Data", xlab="Time", ylab="Price")
-lines(gam_data_train$t, fitted(best_gam_model), col="blue", lwd=2)
-# Aggiunta previsione
-lines(t_test, pred_gam_test, col="green", lwd=2)
-legend("topleft", legend=c("Train", "Fitted", "Forecast"), 
-       col=c("gray", "blue", "green"), lty=1, lwd=2)
+# 5. Visualizzazione Risultato GAM con DATE
+# Estraiamo le date reali dagli oggetti originali
+date_train <- index(train)
+date_test  <- index(test)
 
+# Calcoliamo i limiti del grafico per assicurarci che si vedano sia il Train che il Test
+# Limiti Prezzo (Y)
+y_min <- min(c(gam_data_train$y, pred_gam_test))
+y_max <- max(c(gam_data_train$y, pred_gam_test))
+# Limiti Tempo (X)
+x_range <- c(min(date_train), max(date_test))
+
+# Creiamo il grafico vuoto con le dimensioni giuste (type="n")
+plot(x_range, c(y_min, y_max), type="n", 
+     main="GAM Best Fit vs Data", xlab="Date", ylab="Price", ylim=c(y_min, y_max))
+
+# 1. Disegniamo i dati Reali del Train (Grigio)
+lines(date_train, gam_data_train$y, col="gray", lwd=2)
+
+# 2. Disegniamo il Fitted Model (Blu) - Come il modello ha imparato
+lines(date_train, fitted(best_gam_model), col="blue", lwd=2)
+
+# 3. Disegniamo la Previsione sul Test (Verde)
+lines(date_test, pred_gam_test, col="green", lwd=2)
+
+# Legenda
+legend("topleft", legend=c("Train Real", "Fitted", "Forecast"), 
+       col=c("gray", "blue", "green"), lty=1, lwd=2)
 
 
