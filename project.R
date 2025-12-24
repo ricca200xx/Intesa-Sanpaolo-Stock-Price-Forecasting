@@ -1,3 +1,45 @@
+### clearing the global environment
+rm(list = ls())
+
+##### temp some function I made in the past that could prove useful #####
+aic.manual <- function(myarima, intord = 0, seasord = 0){
+  ##temp notes: the function takes the actual data (time series) and then fits 
+  ## the arimas, so the input should NOT be an arima, but rather raw data
+  aicm <- matrix(0,4,4)
+  
+  LowestIndex <- 0.0
+  MAIndex <- 0
+  ARIndex <- 0
+  
+  for (i in 0:3) for (j in 0:3) {
+    fit<-arima(myarima, order = c(i,intord,j), 
+               seasonal = list(order = c(0,seasord,0), period = 12), method = "ML")
+    aicm[i+1,j+1] <- fit$aic
+    
+    if (i==0 & j==0) {
+      LowestIndex <- fit$aic
+    } else if (LowestIndex>aicm[i+1,j+1])  {
+      LowestIndex <- fit$aic
+      ARIndex <- i
+      MAIndex <- j
+      
+    }
+  }
+  cat("Lowest Index =",LowestIndex, "\n")
+  cat("AR =",ARIndex, "\n")
+  cat("MA =",MAIndex, "\n")
+  rownames(aicm) <- c(0,1,2,3)
+  colnames(aicm) <- c(0,1,2,3)
+  aicm
+  
+}
+
+int.conf <- function(fit.arima) {
+  cat("Upper Bound =", fit.arima$coef + (1.96 * diag(fit.arima$var.coef ^ 0.5)), "\n")
+  cat("Lower Bound =", fit.arima$coef - (1.96 * diag(fit.arima$var.coef ^ 0.5)), "\n")
+}
+
+
 #library requirement
 if (!require("quantmod")) install.packages("quantmod")
 if (!require("fpp2")) install.packages("fpp2")
