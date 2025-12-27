@@ -45,12 +45,18 @@ if (!require("quantmod")) install.packages("quantmod")
 if (!require("fpp2")) install.packages("fpp2")
 if (!require("zoo")) install.packages("zoo")
 if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("forecast")) install.packages("forecast")
+if (!require("gam")) install.packages("gam")
+if (!require("prophet")) install.packages("prophet")
 
 library(quantmod)
 library(zoo)
 library(fpp2)   
 library(gridExtra)
 library(urca)
+library(forecast)
+library(gam)
+library(prophet)
 
 ################################################################################
 #Phase 0 revenue data
