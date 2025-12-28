@@ -62,7 +62,7 @@ library(prophet)
 #Phase 0 revenue data
 ################################################################################
 library(readxl)
-revenue_apple_qurter <- read_excel("C:/Users/ricky/OneDrive/Desktop/BEFD project/BEFD-project/revenue_apple_qurter.xlsx")
+# revenue_apple_qurter <- read_excel("C:/Users/ricky/OneDrive/Desktop/BEFD project/BEFD-project/revenue_apple_qurter.xlsx")
 
 #################################################################################
 #Phase 1 Add the dataset and data cleaning
@@ -98,6 +98,9 @@ test  <- all_price[(split_point + 1):n_obs]
 # creazione ts frequency = 365
 train_set <- ts(as.numeric(train), frequency = 365)
 test_set  <- ts(as.numeric(test), frequency = 365)
+
+# Valori reali del test set per calcolo MSE
+test_actual <- as.numeric(test)
 
 # plot
 df_plot <- data.frame(
@@ -138,9 +141,22 @@ p4 <- autoplot(Pacf(diff_train, plot = FALSE, lag.max = 60)) +
 grid.arrange(p3, p4)
 
 ################################################################################
-#Phase 3 #auto arima function(Stefano)
-###############################################################################
+# Phase 3: Auto ARIMA Model
+################################################################################
 
+# 1. Stima del modello automatico
+fit_arima <- auto.arima(train_set)
+aic_arima <- fit_arima$aic
+
+# 2. Previsione sul test set
+forecast_arima <- forecast(fit_arima, h = length(test))
+pred_arima <- as.numeric(forecast_arima$mean)
+
+# 3. Calcolo MSE
+mse_arima <- mean((test_actual - pred_arima)^2)
+
+cat("ARIMA AIC:", aic_arima, "\n")
+cat("ARIMA MSE:", mse_arima, "\n")
 
 ################################################################################
 # Phase 4: Prophet Model
@@ -149,224 +165,163 @@ library(prophet)
 
 df_prophet <- data.frame(ds = index(train), y  = as.numeric(train))
 
-# 2. Setup e Fit del Modello
-# Disabilitiamo la stagionalità giornaliera/settimanale se non rilevante per dati daily stock
-# Apple ha forti componenti di trend, lasciamo growth linear (o logistic se avessimo un cap)
 m_prophet <- prophet(df_prophet, 
                      daily.seasonality = TRUE, 
                      yearly.seasonality = TRUE,
                      weekly.seasonality = TRUE)
 
-# 3. Creazione finestra futura (lunghezza del test set)
 future <- make_future_dataframe(m_prophet, periods = length(test), freq = "day")
-
-# 4. Previsione
 forecast_prophet <- predict(m_prophet, future)
 
-# 5. Plotting (stile Lab 5)
-plot(m_prophet, forecast_prophet) + ggtitle("Prophet Model Forecast - AAPL")
-
-# 6. Calcolo AIC per selezione modello
-# Prophet non restituisce l'AIC standard. Lo calcoliamo dai residui del training.
-# AIC = n * log(RSS/n) + 2 * k
-# k = numero di parametri (approssimato con numero di changepoints + stagionalità)
-
+# AIC (calcolo manuale dai residui training)
 y_hat_train <- forecast_prophet$yhat[1:nrow(df_prophet)]
 residuals_prophet <- df_prophet$y - y_hat_train
 rss_prophet <- sum(residuals_prophet^2)
 n <- nrow(df_prophet)
-# k approssimato: num changepoints stimate (>0) + seasonality parameters
-k_prophet <- sum(m_prophet$params$delta != 0) + 5 # 5 for basic seasonality terms approximation
+k_prophet <- sum(m_prophet$params$delta != 0) + 5 
 
 aic_prophet <- n * log(rss_prophet/n) + 2 * k_prophet
-aic_prophet
-# AIC 5285.663
 
+# MSE (su test set)
+pred_prophet_test <- forecast_prophet$yhat[(n_obs - length(test) + 1):n_obs]
+mse_prophet <- mean((test_actual - pred_prophet_test)^2)
 
 ################################################################################
 # Phase 5: Diffusion Models (DIMORA)
 ################################################################################
-
 library(DIMORA)
 
 train_values <- as.numeric(train)
 diff_price_train <- diff(train_values)
 diff_price_train <- na.omit(diff_price_train)
 
-# STEP 1: Bass Model (BM) - Serve come base solida
 bm_model <- BM(diff_price_train, display = FALSE)
 summary(bm_model)
 
-m_base <-5.815944e+03 
-p_base <- 6.497097e-06
-q_base <- 7.724523e-04
+m_base <- 7.889965e+03
+p_base <- 2.312695e-06
+q_base <- 1.595420e-03
 
-# STEP 2: Generalized Bass Model (GBM) con SHOCK RETTANGOLARE
-start_shock <- 500  
-end_shock   <- 750
-c_shock     <- -0.2 # Intensità negativa (freno al prezzo)
+prelim_gbm <- c(m_base, p_base, q_base, 500, 750, -0.2)
 
-# Vettore stime iniziali: c(m, p, q, a1, b1, c1)
-prelim_gbm <- c(m_base, p_base, q_base, start_shock, end_shock, c_shock)
-
-# Usiamo tryCatch per evitare il crash se l'ottimizzazione è difficile
 gbm_model <- tryCatch({
   GBM(diff_train, shock = "rett", nshock = 1, 
       prelimestimates = prelim_gbm, display = FALSE)
-}, error = function(e) {
-  message("GBM non converge nemmeno con aiuto. Uso BM.")
-  return(bm_model)
-})
+}, error = function(e) { bm_model })
 
-if(length(gbm_model$pars) > 3) cat("GBM ottimizzato con successo con shock.\n")
+ggm_model <- GGM(diff_train, prelimestimates = c(m_base, 0.001, 0.1, p_base, q_base), display = FALSE)
 
-# STEP 3: Guseo-Guidolin Model (GGM)
-prelim_ggm <- c(m_base, 0.001, 0.1, p_base, q_base)
-ggm_model <- GGM(diff_train, prelimestimates = prelim_ggm, display = FALSE)
+# Selezione AIC e Calcolo MSE per il vincitore
+n_diff <- length(diff_train)
+aic_bm <- n_diff * log(sum(residuals(bm_model)^2)/n_diff) + 2 * 3
+aic_gbm <- n_diff * log(sum(residuals(gbm_model)^2)/n_diff) + 2 * length(gbm_model$pars)
+aic_ggm <- n_diff * log(sum(residuals(ggm_model)^2)/n_diff) + 2 * 5
 
+best_aic_diff <- min(aic_bm, aic_gbm, aic_ggm)
 
-# ------------------------------------------------------------------------------
-# CONFRONTO E SELEZIONE (AIC)
-# ------------------------------------------------------------------------------
-n <- length(diff_train)
+# Ricostruzione Prezzo per MSE
+pred_cum_diff <- predict(if(best_aic_diff == aic_gbm) gbm_model else if(best_aic_diff == aic_ggm) ggm_model else bm_model, 
+                         newx = 1:(length(all_price) - 1))
+pred_price_full <- as.numeric(train[1]) + c(0, pred_cum_diff)
+pred_diffusion_test <- pred_price_full[(length(train) + 1):length(all_price)]
 
-# AIC BM
-rss_bm <- sum(residuals(bm_model)^2)
-aic_bm <- n * log(rss_bm/n) + 2 * 3
-
-# AIC GBM
-rss_gbm <- sum(residuals(gbm_model)^2)
-k_gbm <- length(gbm_model$pars) # 6 parametri con shock
-aic_gbm <- n * log(rss_gbm/n) + 2 * k_gbm
-
-# AIC GGM
-rss_ggm <- sum(residuals(ggm_model)^2)
-k_ggm <- 5
-aic_ggm <- n * log(rss_ggm/n) + 2 * k_ggm
-
-cat("\n---------------- CONFRONTO MODELLI ----------------\n")
-cat("AIC BM  (Base):       ", aic_bm, "\n")
-cat("AIC GBM (con Shock):  ", aic_gbm, "\n")
-cat("AIC GGM (Dinamico):   ", aic_ggm, "\n")
-
-# Selezione Migliore
-best_aic <- min(aic_bm, aic_gbm, aic_ggm)
-if (best_aic == aic_gbm) {
-  best_mod <- gbm_model; best_name <- "GBM (Shock)"
-} else if (best_aic == aic_ggm) {
-  best_mod <- ggm_model; best_name <- "GGM"
-} else {
-  best_mod <- bm_model; best_name <- "BM"
-}
-cat(">>> WINNER:", best_name, "\n")
-
-total_len <- length(all_price)
-
-# 2. Generazione della curva (Predict)
-# predict() restituisce il cumulato delle differenze stimate.
-# Usiamo 1:(total_len - 1) perché l'operazione diff() iniziale ha accorciato la serie di 1.
-pred_cum_diff <- predict(best_mod, newx = 1:(total_len - 1))
-
-# 3. Ricostruzione del Prezzo (Livello)
-# Prezzo_t = Prezzo_Iniziale + Cumulato_Differenze_t
-# Prendiamo il primo prezzo dal tuo oggetto 'train'
-p0 <- as.numeric(train[1])
-
-# Aggiungiamo 0 all'inizio per allineare le lunghezze (al tempo t=1 il cumulato è 0)
-pred_price_full <- p0 + c(0, pred_cum_diff)
-
-# 4. Estrazione del vettore per il Test Set
-# Indici: dalla fine del train (+1) fino alla fine totale
-idx_test_start <- length(train) + 1
-pred_diffusion_test <- pred_price_full[idx_test_start:total_len]
-
-# 5. Plot
-# Usiamo index(all_price) per avere le date corrette sull'asse X
-plot(index(all_price), as.numeric(all_price), type="l", col="gray", lwd=2,
-     main = paste("Diffusion Model:", best_name), 
-     ylab = "Price ($)", xlab = "Date")
-
-# Aggiungiamo la linea rossa della previsione (Fit Train + Forecast Test)
-lines(index(all_price), pred_price_full, col="red", lwd=2)
-
-legend("topleft", legend=c("Real Price", paste("Forecast", best_name)),
-       col=c("gray", "red"), lwd=2)
+mse_diffusion <- mean((test_actual - pred_diffusion_test)^2)
 
 ################################################################################
 # Phase 6: GAM MODEL
 ################################################################################
 library(gam)
 
-# 1. Preparazione Dati
-# Creiamo un regressore temporale 't'
 t_train <- 1:length(train)
 gam_data_train <- data.frame(y = as.numeric(train), t = t_train)
+gam_data_test  <- data.frame(t = (length(train) + 1):n_obs)
 
-# Per il test set
-t_test <- (length(train) + 1):(length(train) + length(test))
-gam_data_test <- data.frame(t = t_test)
-
-# 2. Definizione e Selezione Modelli
-# Proviamo diverse complessità per la spline s() sul tempo t
-# Modello 1: Lineare (baseline)
 gam_1 <- gam(y ~ t, data = gam_data_train)
-
-# Modello 2: Spline con 4 gradi di libertà (flessibilità media)
 gam_2 <- gam(y ~ s(t, df=4), data = gam_data_train)
-
-# Modello 3: Spline con 10 gradi di libertà (alta flessibilità per catturare oscillazioni)
 gam_3 <- gam(y ~ s(t, df=10), data = gam_data_train)
 
-# 3. Selezione tramite AIC
-aic_gam1 <- AIC(gam_1)
-aic_gam2 <- AIC(gam_2)
-aic_gam3 <- AIC(gam_3)
+aic_gam <- min(AIC(gam_1), AIC(gam_2), AIC(gam_3))
+best_gam <- list(gam_1, gam_2, gam_3)[[which.min(c(AIC(gam_1), AIC(gam_2), AIC(gam_3)))]]
 
-cat("------------------------------------------------\n")
-cat("Confronto AIC GAM:\n")
-cat("GAM Lineare AIC:", aic_gam1, "\n")
-cat("GAM Spline (df=4) AIC:", aic_gam2, "\n")
-cat("GAM Spline (df=10) AIC:", aic_gam3, "\n")
+# Previsione e MSE
+pred_gam_test <- predict(best_gam, newdata = gam_data_test)
+mse_gam <- mean((test_actual - as.numeric(pred_gam_test))^2)
 
-# Trova il minimo
-aic_vals <- c(aic_gam1, aic_gam2, aic_gam3)
-models_gam <- list(gam_1, gam_2, gam_3)
-best_gam_idx <- which.min(aic_vals)
-best_gam_model <- models_gam[[best_gam_idx]]
+################################################################################
+# Tabella Riassuntiva Finale
+################################################################################
 
-cat("Modello GAM selezionato: Modello", best_gam_idx, "con AIC:", min(aic_vals), "\n")
-cat("------------------------------------------------\n")
+modelli_nomi <- c("Auto-ARIMA", "Prophet", "Diffusion (Best)", "GAM (Best)")
+aic_valori   <- c(aic_arima, aic_prophet, best_aic_diff, aic_gam)
+mse_valori   <- c(mse_arima, mse_prophet, mse_diffusion, mse_gam)
 
-# 4. Previsione
-pred_gam_test <- predict(best_gam_model, newdata = gam_data_test)
+performance_table <- data.frame(
+  Modello = modelli_nomi,
+  AIC = round(aic_valori, 2),
+  MSE = round(mse_valori, 2)
+)
 
-# 5. Visualizzazione Risultato GAM con DATE
-# Estraiamo le date reali dagli oggetti originali
-date_train <- index(train)
-date_test  <- index(test)
+print("--- Performance Comparison Table ---")
+print(performance_table)
 
-# Calcoliamo i limiti del grafico per assicurarci che si vedano sia il Train che il Test
-# Limiti Prezzo (Y)
-y_min <- min(c(gam_data_train$y, pred_gam_test))
-y_max <- max(c(gam_data_train$y, pred_gam_test))
-# Limiti Tempo (X)
-x_range <- c(min(date_train), max(date_test))
+# Suggerimento sul modello migliore
+best_mse_model <- performance_table$Modello[which.min(performance_table$MSE)]
+cat("\nIl modello con il minor errore di previsione (MSE) è:", best_mse_model, "\n")
 
-# Creiamo il grafico vuoto con le dimensioni giuste (type="n")
-plot(x_range, c(y_min, y_max), type="n", 
-     main="GAM Best Fit vs Data", xlab="Date", ylab="Price", ylim=c(y_min, y_max))
 
-# 1. Disegniamo i dati Reali del Train (Grigio)
-lines(date_train, gam_data_train$y, col="gray", lwd=2)
 
-# 2. Disegniamo il Fitted Model (Blu) - Come il modello ha imparato
-lines(date_train, fitted(best_gam_model), col="blue", lwd=2)
+################################################################################
+# Visualizzazione Finale: Confronto Fit e Forecast
+################################################################################
 
-# 3. Disegniamo la Previsione sul Test (Verde)
-lines(date_test, pred_gam_test, col="green", lwd=2)
+# Prepariamo i vettori completi (Fitted + Forecast) per ogni modello
+# ARIMA
+fit_arima_full <- c(as.numeric(fitted(fit_arima)), pred_arima)
+
+# Prophet 
+pred_prophet_full <- forecast_prophet$yhat
+
+# Diffusion (già calcolato come pred_price_full)
+pred_diff_full <- pred_price_full
+
+# GAM
+pred_gam_full <- c(as.numeric(fitted(best_gam)), as.numeric(pred_gam_test))
+
+# Creazione del Grafico
+plot(index(all_price), as.numeric(all_price), type="l", col="lightgray", lwd=2,
+     main="Comparison of Models: In-Sample Fit & Out-of-Sample Forecast",
+     ylab="Price ($)", xlab="Date")
+
+# Aggiungiamo le linee dei modelli
+lines(index(all_price), fit_arima_full, col="red", lwd=1, lty=1)       # ARIMA in Rosso
+lines(index(all_price), pred_prophet_full, col="blue", lwd=1, lty=1)   # Prophet in Blu
+lines(index(all_price), pred_diff_full, col="darkgreen", lwd=1, lty=1) # Diffusion in Verde
+lines(index(all_price), pred_gam_full, col="purple", lwd=1, lty=1)     # GAM in Viola
+
+# Linea verticale per indicare l'inizio del Test Set
+abline(v=index(all_price)[split_point], col="black", lty=2, lwd=1.5)
+text(index(all_price)[split_point], min(all_price), "Start Test Set", pos=4, cex=0.8)
 
 # Legenda
-legend("topleft", legend=c("Train Real", "Fitted", "Forecast"), 
-       col=c("gray", "blue", "green"), lty=1, lwd=2)
+legend("topleft", 
+       legend=c("Actual Price", "Auto-ARIMA", "Prophet", "Diffusion (GGM)", "GAM"),
+       col=c("lightgray", "red", "blue", "darkgreen", "purple"), 
+       lwd=2, bty="n", cex=0.8)
 
+################################################################################
+# Zoom sul Test Set (per vedere meglio l'accuratezza della previsione)
+################################################################################
 
+plot(index(test), test_actual, type="l", col="black", lwd=2,
+     main="Zoom: Test Set Forecasting Accuracy",
+     ylab="Price ($)", xlab="Date", ylim=c(min(test_actual)*0.9, max(test_actual)*1.1))
+
+lines(index(test), pred_arima, col="red", lwd=2)
+lines(index(test), pred_prophet_test, col="blue", lwd=2)
+lines(index(test), pred_diffusion_test, col="darkgreen", lwd=2)
+lines(index(test), pred_gam_test, col="purple", lwd=2)
+
+legend("bottomleft", 
+       legend=c("Actual", "ARIMA", "Prophet", "Diffusion", "GAM"),
+       col=c("black", "red", "blue", "darkgreen", "purple"), 
+       lwd=2, bty="n", cex=0.8)
