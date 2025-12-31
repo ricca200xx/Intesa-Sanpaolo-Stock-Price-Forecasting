@@ -72,51 +72,44 @@ symbol <- "AAPL"
 data_fine <- Sys.Date()
 data_inizio <- data_fine - (365 * 5)
 
-#caricamento e preparazione dati
+# getSymbols scarica automaticamente solo i giorni di borsa aperta
 data_raw <- getSymbols(symbol, src = "yahoo", auto.assign = FALSE,
                        from = data_inizio, to = data_fine)
 
-adj_price <- data_raw[, 6]
+# Selezioniamo il prezzo rettificato ed eliminiamo eventuali NA residui
+all_price <- na.omit(data_raw[, 6]) 
 
-# creazione sequenza completa 365 giorni
-all_date <- seq.Date(from = start(adj_price), 
-                     to = end(adj_price), 
-                     by = "day")
-
-# riempimento dei buchi (Weekends/Festivi)
-emp <- xts(order.by = all_date)
-full_ts <- merge(emp, adj_price)
-all_price <- na.locf(full_ts) 
-
-# Divisione train e test
+# Divisione train e test (80/20)
 n_obs <- length(all_price)
 split_point <- floor(0.8 * n_obs)
 
 train <- all_price[1:split_point]
 test  <- all_price[(split_point + 1):n_obs]
 
-# creazione ts frequency = 365
-train_set <- ts(as.numeric(train), frequency = 365)
-test_set  <- ts(as.numeric(test), frequency = 365)
+# Creazione serie storica con frequenza 252 (Standard finanziario)
+# Non usiamo più 365 perché i weekend non esistono in questo dataset
+train_set <- ts(as.numeric(train), frequency = 252)
+test_set  <- ts(as.numeric(test), frequency = 252)
 
 # Valori reali del test set per calcolo MSE
 test_actual <- as.numeric(test)
 
-# plot
+# Plot dei dati reali (senza segmenti piatti nei weekend)
 df_plot <- data.frame(
   Data = index(all_price),
   price = as.numeric(all_price),
-  type = c(rep("Train", length(train)), rep("Test", length(test))))
+  type = c(rep("Train", length(train)), rep("Test", length(test)))
+)
 
 ggplot(df_plot, aes(x = Data, y = price, color = type)) +
   geom_line(linewidth = 0.5) +
   scale_color_manual(values = c("Train" = "#0072B2", "Test" = "#D55E00")) +
-  labs(title = "Apple Stock (AAPL)",
-       x = "Data", y = "price adjusted ($)") +
+  labs(title = "Apple Stock (AAPL) - Solo Giorni di Trading",
+       subtitle = "Frequenza annuale impostata a 252 giorni",
+       x = "Data", y = "Price Adjusted ($)") +
   theme_minimal() +
-  scale_x_date(date_labels = "%Y-%m-%d", date_breaks = "1 year") +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
   theme(legend.position = "bottom")
-
 #################################################################################
 #Phasev2 (Ace e Pacf normal/differentation)
 #################################################################################
@@ -145,8 +138,8 @@ grid.arrange(p3, p4)
 ################################################################################
 
 # 1. Stima del modello automatico
-fit_arima <- auto.arima(train_set)
-aic_arima <- fit_arima$aic
+best_par <- aic.manual(train_set, intord = 1, seasord = 0)
+fit_arima <- arima(train_set, order = c(0, 1, 1), method = "ML")
 
 # 2. Previsione sul test set
 forecast_arima <- forecast(fit_arima, h = length(test))
@@ -155,7 +148,7 @@ pred_arima <- as.numeric(forecast_arima$mean)
 # 3. Calcolo MSE
 mse_arima <- mean((test_actual - pred_arima)^2)
 
-cat("ARIMA AIC:", aic_arima, "\n")
+cat("ARIMA AIC:", fit_arima$aic, "\n")
 cat("ARIMA MSE:", mse_arima, "\n")
 
 ################################################################################
@@ -198,9 +191,9 @@ diff_price_train <- na.omit(diff_price_train)
 bm_model <- BM(diff_price_train, display = FALSE)
 summary(bm_model)
 
-m_base <- 7.889965e+03
-p_base <- 2.312695e-06
-q_base <- 1.595420e-03
+m_base <- 9.479264e+03
+p_base <- 4.155503e-06
+q_base <- 1.747104e-03
 
 prelim_gbm <- c(m_base, p_base, q_base, 500, 750, -0.2)
 
@@ -252,7 +245,7 @@ mse_gam <- mean((test_actual - as.numeric(pred_gam_test))^2)
 ################################################################################
 
 modelli_nomi <- c("Auto-ARIMA", "Prophet", "Diffusion (Best)", "GAM (Best)")
-aic_valori   <- c(aic_arima, aic_prophet, best_aic_diff, aic_gam)
+aic_valori   <- c(fit_arima$aic, aic_prophet, best_aic_diff, aic_gam)
 mse_valori   <- c(mse_arima, mse_prophet, mse_diffusion, mse_gam)
 
 performance_table <- data.frame(
