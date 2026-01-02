@@ -141,11 +141,14 @@ grid.arrange(p3, p4)
 best_par <- aic.manual(train_set, intord = 1, seasord = 0)
 fit_arima <- arima(train_set, order = c(0, 1, 1), method = "ML")
 
-# 2. Previsione sul test set
+# 2. Diagnostica dei residui
+checkresiduals(fit_arima)
+
+# 3. Previsione sul test set
 forecast_arima <- forecast(fit_arima, h = length(test))
 pred_arima <- as.numeric(forecast_arima$mean)
 
-# 3. Calcolo MSE
+# 4. Calcolo MSE
 mse_arima <- mean((test_actual - pred_arima)^2)
 
 cat("ARIMA AIC:", fit_arima$aic, "\n")
