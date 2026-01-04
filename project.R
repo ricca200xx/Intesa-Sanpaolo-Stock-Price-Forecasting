@@ -69,7 +69,7 @@ library(readxl)
 #################################################################################
 
 symbol <- "AAPL"
-data_fine <- Sys.Date()
+data_fine <- as.Date("2026-01-01")
 data_inizio <- data_fine - (365 * 5)
 
 # getSymbols scarica automaticamente solo i giorni di borsa aperta
@@ -191,21 +191,20 @@ train_values <- as.numeric(train)
 diff_price_train <- diff(train_values)
 diff_price_train <- na.omit(diff_price_train)
 
-bm_model <- BM(diff_price_train, display = FALSE)
+bm_model <- BM(train_values, display = FALSE)
 summary(bm_model)
 
-m_base <- 9.479264e+03
-p_base <- 4.155503e-06
-q_base <- 1.747104e-03
+m_base <- 8.096008e+04
+p_base <- 3.474946e-34
+q_base <- 1.121650e+00
 
-prelim_gbm <- c(m_base, p_base, q_base, 500, 750, -0.2)
+prelim_gbm <- c(m_base, p_base, q_base, 504, 630, 0.1)
 
-gbm_model <- tryCatch({
-  GBM(diff_train, shock = "rett", nshock = 1, 
-      prelimestimates = prelim_gbm, display = FALSE)
-}, error = function(e) { bm_model })
+gbm_model <- GBM(train_values, shock = "exp", nshock = 1, prelimestimates = prelim_gbm)
+summary(gbm_model)
 
-ggm_model <- GGM(diff_train, prelimestimates = c(m_base, 0.001, 0.1, p_base, q_base), display = FALSE)
+ggm_model <- GGM(train_values, prelimestimates = c(m_base, 0.001, 0.01,p_base,q_base), display = FALSE)
+summary(ggm_model)
 
 # Selezione AIC e Calcolo MSE per il vincitore
 n_diff <- length(diff_train)
@@ -213,16 +212,24 @@ aic_bm <- n_diff * log(sum(residuals(bm_model)^2)/n_diff) + 2 * 3
 aic_gbm <- n_diff * log(sum(residuals(gbm_model)^2)/n_diff) + 2 * length(gbm_model$pars)
 aic_ggm <- n_diff * log(sum(residuals(ggm_model)^2)/n_diff) + 2 * 5
 
-best_aic_diff <- min(aic_bm, aic_gbm, aic_ggm)
+#aic_bm 21417.79
+#aic_gbm 5071.793
+#aic_ggm 15921.92
 
-# Ricostruzione Prezzo per MSE
-pred_cum_diff <- predict(if(best_aic_diff == aic_gbm) gbm_model else if(best_aic_diff == aic_ggm) ggm_model else bm_model, 
-                         newx = 1:(length(all_price) - 1))
-pred_price_full <- as.numeric(train[1]) + c(0, pred_cum_diff)
-pred_diffusion_test <- pred_price_full[(length(train) + 1):length(all_price)]
+best_model <- gbm_model 
 
-mse_diffusion <- mean((test_actual - pred_diffusion_test)^2)
+n_train <- length(train)
+n_test  <- length(test)
+n_total <- n_train + n_test
 
+indici_test <- (n_train + 1):n_total
+pred_test_val <- predict(best_model, newx = indici_test)
+pred_test <- as.numeric(pred_test_val)
+
+mse_diffusion <- mean((as.numeric(test) - pred_test)^2)
+
+
+cat("MSE sul Test Set:", mse_diffusion, "\n")
 ################################################################################
 # Phase 6: GAM MODEL
 ################################################################################
@@ -259,11 +266,6 @@ performance_table <- data.frame(
 
 print("--- Performance Comparison Table ---")
 print(performance_table)
-
-# Suggerimento sul modello migliore
-best_mse_model <- performance_table$Modello[which.min(performance_table$MSE)]
-cat("\nIl modello con il minor errore di previsione (MSE) è:", best_mse_model, "\n")
-
 
 
 ################################################################################
@@ -321,3 +323,4 @@ legend("bottomleft",
        legend=c("Actual", "ARIMA", "Prophet", "Diffusion", "GAM"),
        col=c("black", "red", "blue", "darkgreen", "purple"), 
        lwd=2, bty="n", cex=0.8)
+
