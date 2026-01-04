@@ -58,12 +58,6 @@ library(forecast)
 library(gam)
 library(prophet)
 
-################################################################################
-#Phase 0 revenue data
-################################################################################
-library(readxl)
-# revenue_apple_qurter <- read_excel("C:/Users/ricky/OneDrive/Desktop/BEFD project/BEFD-project/revenue_apple_qurter.xlsx")
-
 #################################################################################
 #Phase 1 Add the dataset and data cleaning
 #################################################################################
@@ -139,7 +133,7 @@ grid.arrange(p3, p4)
 
 # 1. Stima del modello automatico
 best_par <- aic.manual(train_set, intord = 1, seasord = 0)
-fit_arima <- arima(train_set, order = c(0, 1, 1), method = "ML")
+fit_arima <- arima(train_set, order = c(0, 1, 0), method = "ML")
 
 # 2. Diagnostica dei residui
 checkresiduals(fit_arima)
@@ -183,13 +177,41 @@ pred_prophet_test <- forecast_prophet$yhat[(n_obs - length(test) + 1):n_obs]
 mse_prophet <- mean((test_actual - pred_prophet_test)^2)
 
 ################################################################################
+#Holt-witers (optional?)
+################################################################################
+# 1. Preparazione Time Series (Frequenza 252)
+train_ts <- ts(as.numeric(train), frequency = 252)
+
+# 2. Fit del modello Holt-Winters (Base R)
+# gamma = FALSE esclude la stagionalità se il modello non riesce a calcolarla,
+# ma con Apple la lasciamo attiva (gamma = NULL di default)
+hw_fit <- HoltWinters(train_ts, seasonal = "additive")
+
+# 3. Previsione per il Test Set
+library(forecast)
+hw_forecast <- forecast(hw_fit, h = length(test))
+
+# 4. Estrazione Valori
+pred_hw_train <- as.numeric(hw_fit$fitted[,1]) 
+# Nota: HoltWinters perde i primi osservazioni per il calcolo, 
+# quindi aggiungiamo dei NA iniziali per mantenere la lunghezza del train
+pred_hw_train_full <- c(rep(NA, length(train) - length(pred_hw_train)), pred_hw_train)
+
+pred_hw_test <- as.numeric(hw_forecast$mean)
+
+# 5. Calcolo MSE
+mse_hw <- mean((as.numeric(test) - pred_hw_test)^2)
+
+cat("\n--- Risultati Holt-Winters ---\n")
+cat("MSE Holt-Winters:", mse_hw, "\n")
+
+
+################################################################################
 # Phase 5: Diffusion Models (DIMORA)
 ################################################################################
 library(DIMORA)
 
 train_values <- as.numeric(train)
-diff_price_train <- diff(train_values)
-diff_price_train <- na.omit(diff_price_train)
 
 bm_model <- BM(train_values, display = FALSE)
 summary(bm_model)
@@ -198,9 +220,9 @@ m_base <- 8.096008e+04
 p_base <- 3.474946e-34
 q_base <- 1.121650e+00
 
-prelim_gbm <- c(m_base, p_base, q_base, 504, 630, 0.1)
+prelim_gbm <- c(m_base, p_base, q_base)
 
-gbm_model <- GBM(train_values, shock = "exp", nshock = 1, prelimestimates = prelim_gbm)
+gbm_model <- GBM(train_values,  prelimestimates = prelim_gbm)
 summary(gbm_model)
 
 ggm_model <- GGM(train_values, prelimestimates = c(m_base, 0.001, 0.01,p_base,q_base), display = FALSE)
@@ -216,7 +238,7 @@ aic_ggm <- n_diff * log(sum(residuals(ggm_model)^2)/n_diff) + 2 * 5
 #aic_gbm 5071.793
 #aic_ggm 15921.92
 
-best_model <- gbm_model 
+best_model <- ggm_model 
 
 n_train <- length(train)
 n_test  <- length(test)
@@ -249,6 +271,7 @@ best_gam <- list(gam_1, gam_2, gam_3)[[which.min(c(AIC(gam_1), AIC(gam_2), AIC(g
 # Previsione e MSE
 pred_gam_test <- predict(best_gam, newdata = gam_data_test)
 mse_gam <- mean((test_actual - as.numeric(pred_gam_test))^2)
+
 
 ################################################################################
 # Tabella Riassuntiva Finale
