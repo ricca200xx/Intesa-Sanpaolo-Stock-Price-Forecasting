@@ -220,9 +220,10 @@ m_base <- 8.096008e+04
 p_base <- 3.474946e-34
 q_base <- 1.121650e+00
 
-prelim_gbm <- c(m_base, p_base, q_base)
+prelim_gbm <- c(m_base, p_base, q_base, 630, 750, 0,2)
 
-gbm_model <- GBM(train_values,  prelimestimates = prelim_gbm)
+gbm_model <- GBM(train_values, shock = "exp", nshock = 1,
+                 prelimestimates = prelim_gbm)
 summary(gbm_model)
 
 ggm_model <- GGM(train_values, prelimestimates = c(m_base, 0.001, 0.01,p_base,q_base), display = FALSE)
@@ -278,7 +279,7 @@ mse_gam <- mean((test_actual - as.numeric(pred_gam_test))^2)
 ################################################################################
 
 modelli_nomi <- c("Auto-ARIMA", "Prophet", "Diffusion (Best)", "GAM (Best)")
-aic_valori   <- c(fit_arima$aic, aic_prophet, best_aic_diff, aic_gam)
+aic_valori   <- c(fit_arima$aic, aic_prophet, aic_ggm, aic_gam)
 mse_valori   <- c(mse_arima, mse_prophet, mse_diffusion, mse_gam)
 
 performance_table <- data.frame(
