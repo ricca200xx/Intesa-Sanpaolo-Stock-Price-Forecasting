@@ -2,38 +2,6 @@
 rm(list = ls())
 
 ##### temp some function I made in the past that could prove useful #####
-aic.manual <- function(myarima, intord = 0, seasord = 0){
-  ##temp notes: the function takes the actual data (time series) and then fits 
-  ## the arimas, so the input should NOT be an arima, but rather raw data
-  aicm <- matrix(0,4,4)
-  
-  LowestIndex <- 0.0
-  MAIndex <- 0
-  ARIndex <- 0
-  
-  for (i in 0:3) for (j in 0:3) {
-    fit<-arima(myarima, order = c(i,intord,j), 
-               seasonal = list(order = c(0,seasord,0), period = 12), method = "ML")
-    aicm[i+1,j+1] <- fit$aic
-    
-    if (i==0 & j==0) {
-      LowestIndex <- fit$aic
-    } else if (LowestIndex>aicm[i+1,j+1])  {
-      LowestIndex <- fit$aic
-      ARIndex <- i
-      MAIndex <- j
-      
-    }
-  }
-  cat("Lowest Index =",LowestIndex, "\n")
-  cat("AR =",ARIndex, "\n")
-  cat("MA =",MAIndex, "\n")
-  rownames(aicm) <- c(0,1,2,3)
-  colnames(aicm) <- c(0,1,2,3)
-  aicm
-  
-}
-
 int.conf <- function(fit.arima) {
   cat("Upper Bound =", fit.arima$coef + (1.96 * diag(fit.arima$var.coef ^ 0.5)), "\n")
   cat("Lower Bound =", fit.arima$coef - (1.96 * diag(fit.arima$var.coef ^ 0.5)), "\n")
@@ -48,6 +16,7 @@ if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("forecast")) install.packages("forecast")
 if (!require("gam")) install.packages("gam")
 if (!require("prophet")) install.packages("prophet")
+if (!require("DIMORA")) install.packages("DIMORA")
 
 library(quantmod)
 library(zoo)
@@ -57,6 +26,53 @@ library(urca)
 library(forecast)
 library(gam)
 library(prophet)
+library(DIMORA)
+
+#################################################################################
+#### custom functions
+#################################################################################
+
+arima.aic.manual <- function(mydata, intord = 0, seasord = 0){
+  aicm <- matrix(0,5,5)
+  
+  LowestIndex <- 0.0
+  MAIndex <- 0
+  ARIndex <- 0
+  
+  SecondLowestIndex <- 0.0  
+  MAIndexSecond <- 0
+  ARIndexSecond <- 0
+  
+  for (i in 0:4) for (j in 0:4) {
+    fit<-arima(mydata, order = c(i,intord,j), 
+               seasonal = list(order = c(0,seasord,0), period = 12), method = "ML")
+    aicm[i+1,j+1] <- fit$aic
+    
+    if (i==0 & j==0) {
+      LowestIndex <- fit$aic
+      SecondLowestIndex <- fit$aic
+    } else if (LowestIndex > aicm[i+1,j+1])  {
+      LowestIndex <- fit$aic
+      ARIndex <- i
+      MAIndex <- j
+      
+    }else if (SecondLowestIndex > aicm[i+1,j+1]) {
+      SecondLowestIndex <- fit$aic
+      ARIndexSecond <- i
+      MAIndexSecond <- j      
+    }
+  }
+  cat("Lowest Index =",LowestIndex, "\n")
+  cat("AR =",ARIndex, "\n")
+  cat("MA =",MAIndex, "\n")
+  cat("Second Lowest Index =",SecondLowestIndex, "\n")
+  cat("AR 2° =",ARIndexSecond, "\n")
+  cat("MA 2° =",MAIndexSecond, "\n")
+  rownames(aicm) <- c(0,1,2,3,4)
+  colnames(aicm) <- c(0,1,2,3,4)
+  print(aicm)
+  
+}
 
 #################################################################################
 #Phase 1 Add the dataset and data cleaning
@@ -81,7 +97,6 @@ train <- all_price[1:split_point]
 test  <- all_price[(split_point + 1):n_obs]
 
 # Creazione serie storica con frequenza 252 (Standard finanziario)
-# Non usiamo più 365 perché i weekend non esistono in questo dataset
 train_set <- ts(as.numeric(train), frequency = 252)
 test_set  <- ts(as.numeric(test), frequency = 252)
 
@@ -95,15 +110,18 @@ df_plot <- data.frame(
   type = c(rep("Train", length(train)), rep("Test", length(test)))
 )
 
+##NB: looking manually at the source it seems that the quotation is done in EUR rather then
+##    dollars, so I changed the axes labels accordingly, please make sure its correct. Stefano
 ggplot(df_plot, aes(x = Data, y = price, color = type)) +
   geom_line(linewidth = 0.5) +
   scale_color_manual(values = c("Train" = "#0072B2", "Test" = "#D55E00")) +
-  labs(title = "Apple Stock (AAPL) - Solo Giorni di Trading",
-       subtitle = "Frequenza annuale impostata a 252 giorni",
-       x = "Data", y = "Price Adjusted ($)") +
+  labs(title = "Intesa Sanpaolo S.p.A. (ISP.MI) - Trading days only",
+       subtitle = "Annual Frequency set to 252 days",
+       x = "Data", y = "Price Adjusted (€)") +
   theme_minimal() +
   scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
   theme(legend.position = "bottom")
+
 #################################################################################
 #Phasev2 (Ace e Pacf normal/differentation)
 #################################################################################
@@ -132,8 +150,13 @@ grid.arrange(p3, p4)
 ################################################################################
 
 # 1. Stima del modello automatico
-best_par <- aic.manual(train_set, intord = 1, seasord = 0)
+arima.aic.manual(train_set, intord = 1, seasord = 0)
+
+fit_arima <- arima(train_set, order = c(4, 1, 4), method = "ML")
+summary(fit_arima)
+
 fit_arima <- arima(train_set, order = c(0, 1, 0), method = "ML")
+summary(fit_arima)
 
 # 2. Diagnostica dei residui
 checkresiduals(fit_arima)
@@ -151,8 +174,6 @@ cat("ARIMA MSE:", mse_arima, "\n")
 ################################################################################
 # Phase 4: Prophet Model
 ################################################################################
-library(prophet)
-
 df_prophet <- data.frame(ds = index(train), y  = as.numeric(train))
 
 m_prophet <- prophet(df_prophet, 
@@ -188,7 +209,6 @@ train_ts <- ts(as.numeric(train), frequency = 252)
 hw_fit <- HoltWinters(train_ts, seasonal = "additive")
 
 # 3. Previsione per il Test Set
-library(forecast)
 hw_forecast <- forecast(hw_fit, h = length(test))
 
 # 4. Estrazione Valori
@@ -209,8 +229,6 @@ cat("MSE Holt-Winters:", mse_hw, "\n")
 ################################################################################
 # Phase 5: Diffusion Models (DIMORA)
 ################################################################################
-library(DIMORA)
-
 train_values <- as.numeric(train)
 
 bm_model <- BM(train_values, display = FALSE)
@@ -255,8 +273,6 @@ cat("MSE sul Test Set:", mse_diffusion, "\n")
 ################################################################################
 # Phase 6: GAM MODEL
 ################################################################################
-library(gam)
-
 t_train <- 1:length(train)
 gam_data_train <- data.frame(y = as.numeric(train), t = t_train)
 gam_data_test  <- data.frame(t = (length(train) + 1):n_obs)
