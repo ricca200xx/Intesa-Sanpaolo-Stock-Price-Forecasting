@@ -62,7 +62,7 @@ library(prophet)
 #Phase 1 Add the dataset and data cleaning
 #################################################################################
 
-symbol <- "AAPL"
+symbol <- "ISP.MI"
 data_fine <- as.Date("2026-01-01")
 data_inizio <- data_fine - (365 * 5)
 
@@ -216,14 +216,13 @@ train_values <- as.numeric(train)
 bm_model <- BM(train_values, display = FALSE)
 summary(bm_model)
 
-m_base <- 8.096008e+04
-p_base <- 3.474946e-34
-q_base <- 1.121650e+00
+m_base <- 5.827073e+04
+p_base <- 2.140985e-05
+q_base <- 8.516215e-04
 
-prelim_gbm <- c(m_base, p_base, q_base, 630, 750, 0,2)
+prelim_gbm <- c(m_base, p_base, q_base)
 
-gbm_model <- GBM(train_values, shock = "exp", nshock = 1,
-                 prelimestimates = prelim_gbm)
+gbm_model <- GBM(train_values, nshock = 0, prelimestimates = prelim_gbm)
 summary(gbm_model)
 
 ggm_model <- GGM(train_values, prelimestimates = c(m_base, 0.001, 0.01,p_base,q_base), display = FALSE)
