@@ -227,7 +227,8 @@ cat("MSE Holt-Winters:", mse_hw, "\n")
 
 
 ################################################################################
-# Phase 5: Diffusion Models (DIMORA)
+# Phase 5: Diffusion Models (DIMORA) -> after checking it I wonder if its worth 
+#          putting it in the project, honestly I don't think so, the package sucks
 ################################################################################
 train_values <- as.numeric(train)
 
@@ -240,8 +241,21 @@ q_base <- 8.516215e-04
 
 prelim_gbm <- c(m_base, p_base, q_base)
 
+## with "hard-coded" values
 gbm_model <- GBM(train_values, nshock = 0, prelimestimates = prelim_gbm)
 summary(gbm_model)
+
+ggm_model <- GGM(train_values, prelimestimates = c(m_base, 0.001, 0.01,p_base,q_base), display = FALSE)
+summary(ggm_model)
+
+## automatically chosen values 
+#it gave an error because it's not how the function works, press F1 to see the specific of the function
+## TLDR: it has to have at least one shock
+gbm_model <- GBM(train_values, shock = "rett", nshock = 1, prelimestimates = prelim_gbm)
+summary(gbm_model)
+
+## also I tried to make it work, looking at the documentation, but it's just an 
+## extremely buggy and badly made package/function
 
 ggm_model <- GGM(train_values, prelimestimates = c(m_base, 0.001, 0.01,p_base,q_base), display = FALSE)
 summary(ggm_model)
@@ -290,7 +304,7 @@ mse_gam <- mean((test_actual - as.numeric(pred_gam_test))^2)
 
 
 ################################################################################
-# Tabella Riassuntiva Finale
+# Final Summary Table
 ################################################################################
 
 modelli_nomi <- c("Auto-ARIMA", "Prophet", "Diffusion (Best)", "GAM (Best)")
@@ -308,7 +322,7 @@ print(performance_table)
 
 
 ################################################################################
-# Visualizzazione Finale: Confronto Fit e Forecast
+# Final results: comparing Fit e Forecast
 ################################################################################
 
 # Prepariamo i vettori completi (Fitted + Forecast) per ogni modello
