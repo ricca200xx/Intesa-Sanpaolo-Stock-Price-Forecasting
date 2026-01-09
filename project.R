@@ -188,6 +188,12 @@ forecast_prophet <- predict(m_prophet, future)
 y_hat_train <- forecast_prophet$yhat[1:nrow(df_prophet)]
 residuals_prophet <- df_prophet$y - y_hat_train
 rss_prophet <- sum(residuals_prophet^2)
+# Plot residui
+plot(df_prophet$ds, residuals_prophet, type="l", main="Prophet residuals (train)",
+     xlab="Date", ylab="Residual")
+Acf(residuals_prophet, main="Prophet residuals ACF")
+Box.test(residuals_prophet, lag = 20, type = "Ljung-Box")
+
 n <- nrow(df_prophet)
 k_prophet <- sum(m_prophet$params$delta != 0) + 5 
 
@@ -219,7 +225,15 @@ pred_hw_train_full <- c(rep(NA, length(train) - length(pred_hw_train)), pred_hw_
 
 pred_hw_test <- as.numeric(hw_forecast$mean)
 
-# 5. Calcolo MSE
+# 5. Calcolo dei residui
+res_hw <- as.numeric(train_ts) - pred_hw_train_full
+res_hw <- na.omit(res_hw)
+
+plot(res_hw, type="l", main="Holt-Winters residuals (train)", xlab="t", ylab="Residual")
+Acf(res_hw, main="Holt-Winters residuals ACF")
+Box.test(res_hw, lag = 20, type = "Ljung-Box")
+
+# 6. Calcolo MSE
 mse_hw <- mean((as.numeric(test) - pred_hw_test)^2)
 
 cat("\n--- Risultati Holt-Winters ---\n")
@@ -297,6 +311,13 @@ gam_3 <- gam(y ~ s(t, df=10), data = gam_data_train)
 
 aic_gam <- min(AIC(gam_1), AIC(gam_2), AIC(gam_3))
 best_gam <- list(gam_1, gam_2, gam_3)[[which.min(c(AIC(gam_1), AIC(gam_2), AIC(gam_3)))]]
+
+# Residui
+res_gam <- residuals(best_gam)
+
+plot(res_gam, type="l", main="GAM residuals (train)", xlab="t", ylab="Residual")
+Acf(res_gam, main="GAM residuals ACF")
+Box.test(res_gam, lag = 20, type = "Ljung-Box")
 
 # Previsione e MSE
 pred_gam_test <- predict(best_gam, newdata = gam_data_test)
