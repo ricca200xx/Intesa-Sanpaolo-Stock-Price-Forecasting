@@ -235,7 +235,7 @@ monthly_test <- aggregate(test_set ~ group_index_test, FUN = mean)$test_set
 
 raw_holt_forecast <- as.numeric(holt_fit$mean)
 
-mse_hw <- mean((monthly_test - raw_holt_forecast)^2)
+mse_holt <- mean((monthly_test - raw_holt_forecast)^2)
 #I do have some qualms about this approach tho, that came up to me while writing
 #this code, regarding the possibility of too much alteration on the data for
 #this forecast to be useful, A. and R. let me know what you think
@@ -288,8 +288,23 @@ fit_arima_full <- c(as.numeric(fitted(fit_arima)), pred_arima)
 # Prophet 
 pred_prophet_full <- forecast_prophet$yhat
 
-# Diffusion (già calcolato come pred_price_full)
-pred_diff_full <- pred_price_full
+#holt
+#Retrieve the fitted values from the Holt model
+#This is the model's estimate for each of the 63 months
+monthly_fitted <- as.numeric(holt_fit$fitted)
+
+#Mapping them back to daily frequency using your existing group_index
+#R will repeat monthly_fitted[1] for all days where group_index == 1, etc.
+daily_fitted_holt <- monthly_fitted[group_index]
+
+#Expanding the 13 forecast points to the daily test_set length
+daily_forecast_holt <- raw_holt_forecast[group_index_test]
+
+#Combining the expanded fitted and forecast values
+full_daily_holt <- c(daily_fitted_holt, daily_forecast_holt)
+
+#I don't know if needed but now we can calculate Daily MSE for a direct comparison
+mse_daily_holt <- mean((test_set - daily_forecast_holt)^2)
 
 # GAM
 pred_gam_full <- c(as.numeric(fitted(best_gam)), as.numeric(pred_gam_test))
@@ -302,7 +317,7 @@ plot(index(all_price), as.numeric(all_price), type="l", col="lightgray", lwd=2,
 # Aggiungiamo le linee dei modelli
 lines(index(all_price), fit_arima_full, col="red", lwd=1, lty=1)       # ARIMA in Rosso
 lines(index(all_price), pred_prophet_full, col="blue", lwd=1, lty=1)   # Prophet in Blu
-lines(index(all_price), pred_diff_full, col="darkgreen", lwd=1, lty=1) # Diffusion in Verde
+lines(index(all_price), full_daily_holt, col="darkgreen", lwd=1, lty=1) # Diffusion in Verde
 lines(index(all_price), pred_gam_full, col="purple", lwd=1, lty=1)     # GAM in Viola
 
 # Linea verticale per indicare l'inizio del Test Set
