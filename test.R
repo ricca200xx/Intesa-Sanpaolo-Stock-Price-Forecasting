@@ -263,9 +263,10 @@ mse_gam <- mean((test_actual - as.numeric(pred_gam_test))^2)
 # Final Summary Table
 ################################################################################
 
-modelli_nomi <- c("Auto-ARIMA", "Prophet", "Diffusion (Best)", "GAM (Best)")
-aic_valori   <- c(fit_arima$aic, aic_prophet, aic_ggm, aic_gam)
-mse_valori   <- c(mse_arima, mse_prophet, mse_diffusion, mse_gam)
+modelli_nomi <- c("Auto-ARIMA", "Prophet", "Holt (monthly aggregate)", "GAM (Best)")
+aic_valori   <- c(fit_arima$aic, aic_prophet, holt_fit$model$aic, aic_gam)
+mse_valori   <- c(mse_arima, mse_prophet, mse_holt, mse_gam)
+#we should consider using daily holt's mse rather then the monthly aggregate one
 
 performance_table <- data.frame(
   Modello = modelli_nomi,
@@ -317,7 +318,7 @@ plot(index(all_price), as.numeric(all_price), type="l", col="lightgray", lwd=2,
 # Aggiungiamo le linee dei modelli
 lines(index(all_price), fit_arima_full, col="red", lwd=1, lty=1)       # ARIMA in Rosso
 lines(index(all_price), pred_prophet_full, col="blue", lwd=1, lty=1)   # Prophet in Blu
-lines(index(all_price), full_daily_holt, col="darkgreen", lwd=1, lty=1) # Diffusion in Verde
+lines(index(all_price), full_daily_holt, col="darkgreen", lwd=1, lty=1) # Holt in Verde
 lines(index(all_price), pred_gam_full, col="purple", lwd=1, lty=1)     # GAM in Viola
 
 # Linea verticale per indicare l'inizio del Test Set
@@ -326,7 +327,7 @@ text(index(all_price)[split_point], min(all_price), "Start Test Set", pos=4, cex
 
 # Legenda
 legend("topleft", 
-       legend=c("Actual Price", "Auto-ARIMA", "Prophet", "Diffusion (GGM)", "GAM"),
+       legend=c("Actual Price", "Auto-ARIMA", "Holt", "Diffusion (GGM)", "GAM"),
        col=c("lightgray", "red", "blue", "darkgreen", "purple"), 
        lwd=2, bty="n", cex=0.8)
 
@@ -340,11 +341,11 @@ plot(index(test), test_actual, type="l", col="black", lwd=2,
 
 lines(index(test), pred_arima, col="red", lwd=2)
 lines(index(test), pred_prophet_test, col="blue", lwd=2)
-lines(index(test), pred_diffusion_test, col="darkgreen", lwd=2)
+lines(index(test), daily_forecast_holt, col="darkgreen", lwd=2)
 lines(index(test), pred_gam_test, col="purple", lwd=2)
 
-legend("bottomleft", 
-       legend=c("Actual", "ARIMA", "Prophet", "Diffusion", "GAM"),
+legend("topleft", 
+       legend=c("Actual", "ARIMA", "Prophet", "Holt", "GAM"),
        col=c("black", "red", "blue", "darkgreen", "purple"), 
        lwd=2, bty="n", cex=0.8)
 
