@@ -1,13 +1,6 @@
 ### clearing the global environment
 rm(list = ls())
 
-##### temp some function I made in the past that could prove useful #####
-int.conf <- function(fit.arima) {
-  cat("Upper Bound =", fit.arima$coef + (1.96 * diag(fit.arima$var.coef ^ 0.5)), "\n")
-  cat("Lower Bound =", fit.arima$coef - (1.96 * diag(fit.arima$var.coef ^ 0.5)), "\n")
-}
-
-
 #library requirement
 if (!require("quantmod")) install.packages("quantmod")
 if (!require("fpp2")) install.packages("fpp2")
@@ -16,7 +9,6 @@ if (!require("ggplot2")) install.packages("ggplot2")
 if (!require("forecast")) install.packages("forecast")
 if (!require("gam")) install.packages("gam")
 if (!require("prophet")) install.packages("prophet")
-if (!require("DIMORA")) install.packages("DIMORA")
 
 library(quantmod)
 library(zoo)
@@ -26,7 +18,6 @@ library(urca)
 library(forecast)
 library(gam)
 library(prophet)
-library(DIMORA)
 
 #################################################################################
 #### custom functions
@@ -188,6 +179,13 @@ forecast_prophet <- predict(m_prophet, future)
 y_hat_train <- forecast_prophet$yhat[1:nrow(df_prophet)]
 residuals_prophet <- df_prophet$y - y_hat_train
 rss_prophet <- sum(residuals_prophet^2)
+# Plot residui
+plot(df_prophet$ds, residuals_prophet, type="l", main="Prophet residuals (train)",
+     xlab="Date", ylab="Residual")
+abline(0, 0, 0)
+Acf(residuals_prophet, main="Prophet residuals ACF")
+Box.test(residuals_prophet, lag = 20, type = "Ljung-Box")
+
 n <- nrow(df_prophet)
 k_prophet <- sum(m_prophet$params$delta != 0) + 5 
 
@@ -200,76 +198,50 @@ mse_prophet <- mean((test_actual - pred_prophet_test)^2)
 ################################################################################
 #Holt (as by agreement, just Holt, since missing seasonality)
 ################################################################################
-# 1. Preparazione Time Series (Frequenza 252)
-train_ts <- ts(as.numeric(train), frequency = 252)
 
-# 2. Fitting Holt model and forecasting
-holt_fit <- holt(train_ts, h = length(test))
+# setting up the data to account for the limitations of the model
+monthly_train <- c()
+
+# old method (past try, found a more elegant and overall better way, so don't 
+#             look at this, is kept just for reference)
+# Calculate how many full 20-day blocks exist
+# num_months <- floor(length(train_set) / 20)
+# 
+# for (i in 0:(num_months - 1)) {
+#   #Defining start and end indices clearly
+#   start_idx <- (i * 20) + 1
+#   end_idx   <- (i + 1) * 20
+#   
+#   month_mean <- mean(train_set[start_idx:end_idx])
+#   
+#   #re-assigning the result to the vector
+#   monthly_train <- c(monthly_train, month_mean)
+# }
+
+#Creating a grouping index: 1, 1... (20 times), 2, 2... (20 times)
+# This handles the end of the vector automatically even if it's < 20
+group_index <- ceiling(seq_along(train_set) / 20)
+
+#Using aggregate() to find the mean per group
+monthly_train <- aggregate(train_set ~ group_index, FUN = mean)$train_set
+
+#Fitting Holt model and forecasting
+holt_fit <- holt(monthly_train, h = 13)
 summary(holt_fit)
 
-# 5. Calcolo MSE
-# mse_hw <- mean((as.numeric(test) - holt_fit)^2)
+# 5. Computing MSE
+group_index_test <- ceiling(seq_along(test_set) / 20)
+monthly_test <- aggregate(test_set ~ group_index_test, FUN = mean)$test_set
+
+raw_holt_forecast <- as.numeric(holt_fit$mean)
+
+mse_hw <- mean((monthly_test - raw_holt_forecast)^2)
+#I do have some qualms about this approach tho, that came up to me while writing
+#this code, regarding the possibility of too much alteration on the data for
+#this forecast to be useful, A. and R. let me know what you think
 
 ################################################################################
-# Phase 5: Diffusion Models (DIMORA) -> after checking it I wonder if its worth 
-#          putting it in the project, honestly I don't think so, the package sucks
-################################################################################
-train_values <- as.numeric(train)
-
-bm_model <- BM(train_values, display = FALSE)
-summary(bm_model)
-
-m_base <- 5.827073e+04
-p_base <- 2.140985e-05
-q_base <- 8.516215e-04
-
-prelim_gbm <- c(m_base, p_base, q_base)
-
-## with "hard-coded" values
-gbm_model <- GBM(train_values, nshock = 0, prelimestimates = prelim_gbm)
-summary(gbm_model)
-
-ggm_model <- GGM(train_values, prelimestimates = c(m_base, 0.001, 0.01,p_base,q_base), display = FALSE)
-summary(ggm_model)
-
-## automatically chosen values 
-#it gave an error because it's not how the function works, press F1 to see the specific of the function
-## TLDR: it has to have at least one shock
-gbm_model <- GBM(train_values, shock = "rett", nshock = 1, prelimestimates = prelim_gbm)
-summary(gbm_model)
-
-## also I tried to make it work, looking at the documentation, but it's just an 
-## extremely buggy and badly made package/function
-
-ggm_model <- GGM(train_values, prelimestimates = c(m_base, 0.001, 0.01,p_base,q_base), display = FALSE)
-summary(ggm_model)
-
-# Selezione AIC e Calcolo MSE per il vincitore
-n_diff <- length(diff_train)
-aic_bm <- n_diff * log(sum(residuals(bm_model)^2)/n_diff) + 2 * 3
-aic_gbm <- n_diff * log(sum(residuals(gbm_model)^2)/n_diff) + 2 * length(gbm_model$pars)
-aic_ggm <- n_diff * log(sum(residuals(ggm_model)^2)/n_diff) + 2 * 5
-
-#aic_bm 21417.79
-#aic_gbm 5071.793
-#aic_ggm 15921.92
-
-best_model <- ggm_model 
-
-n_train <- length(train)
-n_test  <- length(test)
-n_total <- n_train + n_test
-
-indici_test <- (n_train + 1):n_total
-pred_test_val <- predict(best_model, newx = indici_test)
-pred_test <- as.numeric(pred_test_val)
-
-mse_diffusion <- mean((as.numeric(test) - pred_test)^2)
-
-
-cat("MSE sul Test Set:", mse_diffusion, "\n")
-################################################################################
-# Phase 6: GAM MODEL
+# Phase 5: GAM MODEL
 ################################################################################
 t_train <- 1:length(train)
 gam_data_train <- data.frame(y = as.numeric(train), t = t_train)
