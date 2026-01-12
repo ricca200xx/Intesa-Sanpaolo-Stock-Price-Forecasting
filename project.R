@@ -48,6 +48,9 @@ arima.aic.manual <- function(mydata, intord = 0, seasord = 0){
   cat("Lowest Index =",LowestIndex, "\n")
   cat("AR =",ARIndex, "\n")
   cat("MA =",MAIndex, "\n")
+  cat("Second Lowest Index =",SecondLowestIndex, "\n")
+  cat("AR 2° =",ARIndexSecond, "\n")
+  cat("MA 2° =",MAIndexSecond, "\n")
   rownames(aicm) <- c(0,1,2,3,4)
   colnames(aicm) <- c(0,1,2,3,4)
   print(aicm)
@@ -164,6 +167,8 @@ summary(model_resid_prophet)
 # Final Hybrid Diagnostic
 cat("\n--- Final Diagnostic (Hybrid Prophet) ---\n")
 checkresiduals(model_resid_prophet)
+
+acf(model_resid_prophet$residuals)
 
 # 5. Hybrid Forecast (Base + Residuals)
 fcst_resid_prophet <- forecast(model_resid_prophet, h = length(test_ts))
@@ -298,7 +303,7 @@ lines(index(test_vec), pred_prophet_hybrid, col="blue", lwd=2)
 lines(index(test_vec), pred_ets, col="darkgreen", lwd=2)
 lines(index(test_vec), pred_gam_hybrid, col="purple", lwd=2)
 
-legend("bottomleft", 
+legend("topleft", 
        legend=c("Actual", "ARIMA", "Hybrid Prophet", "ETS", "Hybrid GAM"),
        col=c("black", "red", "blue", "darkgreen", "purple"), 
        lwd=2, bty="n", cex=0.8)
@@ -400,3 +405,4 @@ text(last_pred_date, last_pred_val, labels=round(last_pred_val, 3), pos=4, cex=0
 grid()
 legend("topleft", legend=c("Historical Data", "Hybrid Forecast", "95% Confidence Interval"),
        col=c("black", "blue", rgb(0, 0, 1, 0.2)), lty=1, lwd=c(2,3,10), bty="n")
+
