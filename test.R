@@ -168,8 +168,8 @@ cat("ARIMA MSE:", mse_arima, "\n")
 df_prophet <- data.frame(ds = index(train), y  = as.numeric(train))
 
 m_prophet <- prophet(df_prophet, 
-                     daily.seasonality = TRUE, 
-                     yearly.seasonality = TRUE,
+                     daily.seasonality = FALSE, 
+                     yearly.seasonality = FALSE,
                      weekly.seasonality = TRUE)
 
 future <- make_future_dataframe(m_prophet, periods = length(test), freq = "day")
@@ -194,7 +194,8 @@ aic_prophet <- n * log(rss_prophet/n) + 2 * k_prophet
 # MSE (su test set)
 pred_prophet_test <- forecast_prophet$yhat[(n_obs - length(test) + 1):n_obs]
 mse_prophet <- mean((test_actual - pred_prophet_test)^2)
-
+mse_prophet
+aic_prophet
 ################################################################################
 #Holt (as by agreement, just Holt, since missing seasonality)
 ################################################################################
@@ -239,6 +240,32 @@ mse_hw <- mean((monthly_test - raw_holt_forecast)^2)
 #I do have some qualms about this approach tho, that came up to me while writing
 #this code, regarding the possibility of too much alteration on the data for
 #this forecast to be useful, A. and R. let me know what you think
+#############################################################################
+# Other option for holt no need to aggregate the test set
+#################################################################################
+
+fit_ets <- ets(train_set, model = "AAN", damped = FALSE)
+
+summary(fit_ets)
+
+# 2. Previsione
+forecast_ets <- forecast(fit_ets, h = length(test))
+
+# 3. Estrazione dati
+pred_ets_train <- as.numeric(fitted(fit_ets))
+pred_ets_test  <- as.numeric(forecast_ets$mean)
+
+# Calcolo MSE
+mse_ets <- mean((test_actual - pred_ets_test)^2)
+aic_ets <- fit_ets$aic
+
+cat("\n--- Risultati Exponential Smoothing (ETS con Trend) ---\n")
+cat("Modello forzato:", fit_ets$method, "\n")
+cat("MSE ETS (Trend):", mse_ets, "\n")
+cat("AIC ETS:", aic_ets, "\n")
+
+# 4. Diagnostica
+checkresiduals(fit_ets)
 
 ################################################################################
 # Phase 5: GAM MODEL
@@ -293,7 +320,8 @@ pred_diff_full <- pred_price_full
 
 # GAM
 pred_gam_full <- c(as.numeric(fitted(best_gam)), as.numeric(pred_gam_test))
-
+# Non serve più fare vettori strani o aggregati, è tutto lineare ora
+fit_ets_full <- c(pred_ets_train, pred_ets_test)
 # Creazione del Grafico
 plot(index(all_price), as.numeric(all_price), type="l", col="lightgray", lwd=2,
      main="Comparison of Models: In-Sample Fit & Out-of-Sample Forecast",
@@ -304,7 +332,7 @@ lines(index(all_price), fit_arima_full, col="red", lwd=1, lty=1)       # ARIMA i
 lines(index(all_price), pred_prophet_full, col="blue", lwd=1, lty=1)   # Prophet in Blu
 lines(index(all_price), pred_diff_full, col="darkgreen", lwd=1, lty=1) # Diffusion in Verde
 lines(index(all_price), pred_gam_full, col="purple", lwd=1, lty=1)     # GAM in Viola
-
+lines(index(all_price), fit_ets_full, col="yellow", lwd=1, lty=1)
 # Linea verticale per indicare l'inizio del Test Set
 abline(v=index(all_price)[split_point], col="black", lty=2, lwd=1.5)
 text(index(all_price)[split_point], min(all_price), "Start Test Set", pos=4, cex=0.8)
@@ -327,7 +355,7 @@ lines(index(test), pred_arima, col="red", lwd=2)
 lines(index(test), pred_prophet_test, col="blue", lwd=2)
 lines(index(test), pred_diffusion_test, col="darkgreen", lwd=2)
 lines(index(test), pred_gam_test, col="purple", lwd=2)
-
+lines(index(all_price), fit_ets_full, col="yellow", lwd=1, lty=1)
 legend("bottomleft", 
        legend=c("Actual", "ARIMA", "Prophet", "Diffusion", "GAM"),
        col=c("black", "red", "blue", "darkgreen", "purple"), 
