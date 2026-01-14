@@ -1,12 +1,11 @@
 # ==============================================================================
 # PROJECT: Intesa Sanpaolo (ISP.MI) Stock Forecasting
-# Models: ARIMA, Prophet (Hybrid), ETS, GAM (Hybrid)
+# Models: ARIMA, Prophet, ETS, GAM
 # ==============================================================================
 
-### 1. ENVIRONMENT SETUP
-rm(list = ls()) # Clear environment
+rm(list = ls())
 
-# Load libraries (auto-install if missing)
+#libraries
 libs <- c("quantmod", "fpp2", "zoo", "ggplot2", "forecast", "gam", "prophet", "gridExtra", "urca")
 for (lib in libs) {
   if (!require(lib, character.only = TRUE)) install.packages(lib)
@@ -14,7 +13,6 @@ for (lib in libs) {
 }
 
 ### 2. CUSTOM FUNCTIONS
-# Original function provided for Manual ARIMA Grid Search
 arima.aic.manual <- function(mydata, intord = 0, seasord = 0){
   aicm <- matrix(0,5,5)
   
@@ -57,7 +55,7 @@ arima.aic.manual <- function(mydata, intord = 0, seasord = 0){
 }
 
 # ==============================================================================
-# PHASE 1: DATA ACQUISITION & CLEANING
+# PHASE 1: Data acquisition and cleaning
 # ==============================================================================
 
 ticker <- "ISP.MI"
@@ -66,7 +64,7 @@ start_date <- end_date - (365 * 5)
 
 # Download data
 data_raw <- getSymbols(ticker, src = "yahoo", auto.assign = FALSE, from = start_date, to = end_date)
-prices <- na.omit(data_raw[, 6]) # Adjusted Price
+prices <- na.omit(data_raw[, 6])
 
 # Train/Test Split (80/20)
 n_total <- length(prices)
@@ -76,16 +74,15 @@ train_vec <- prices[1:split_idx]
 test_vec  <- prices[(split_idx + 1):n_total]
 test_actual <- as.numeric(test_vec)
 
-# Create Time Series (Frequency: 252 trading days)
+#Frequency 252 (giorni di trading)
 train_ts <- ts(as.numeric(train_vec), frequency = 252)
 test_ts  <- ts(as.numeric(test_vec), frequency = 252)
 
-# Initial Data Plot
+
 df_plot <- data.frame(
   Date = index(prices),
   Price = as.numeric(prices),
-  Set = c(rep("Train", length(train_vec)), rep("Test", length(test_vec)))
-)
+  Set = c(rep("Train", length(train_vec)), rep("Test", length(test_vec))))
 
 ggplot(df_plot, aes(x = Date, y = Price, color = Set)) +
   geom_line(linewidth = 0.4) +
@@ -97,28 +94,27 @@ ggplot(df_plot, aes(x = Date, y = Price, color = Set)) +
   theme(legend.position = "bottom")
 
 # ==============================================================================
-# PHASE 2: PRELIMINARY ANALYSIS (ACF/PACF)
+# PHASE 2: ACF  e PACF (differenziazione)
 # ==============================================================================
 
-# Original Series
+# Original
 p1 <- autoplot(Acf(train_ts, plot = FALSE, lag.max = 60)) + ggtitle("ACF - Original Series") + theme_minimal()
 p2 <- autoplot(Pacf(train_ts, plot = FALSE, lag.max = 60)) + ggtitle("PACF - Original Series") + theme_minimal()
 grid.arrange(p1, p2, ncol = 1)
 
-# Differenced Series
+# Differenced
 diff_ts <- diff(train_ts)
 p3 <- autoplot(Acf(diff_ts, plot = FALSE, lag.max = 60)) + ggtitle("ACF - Differenced Series") + theme_minimal()
 p4 <- autoplot(Pacf(diff_ts, plot = FALSE, lag.max = 60)) + ggtitle("PACF - Differenced Series") + theme_minimal()
 grid.arrange(p3, p4, ncol = 1)
 
 # ==============================================================================
-# PHASE 3: ARIMA MODEL (Benchmark)
+# PHASE 3: ARIMA
 # ==============================================================================
 
-# Run the manual grid search function (Optional)
 arima.aic.manual(train_ts, intord = 1, seasord = 0)
 
-# Selected Model: Random Walk (0,1,0) based on financial series behavior
+# random walk (0,1,0)
 model_arima <- arima(train_ts, order = c(0, 1, 0), method = "ML")
 summary(model_arima)
 checkresiduals(model_arima)
@@ -130,12 +126,71 @@ pred_arima <- as.numeric(fcst_arima$mean)
 mse_arima <- mean((test_actual - pred_arima)^2)
 cat("MSE: ", mse_arima, "AIC:", model_arima$aic, "\n")
 
+# ==============================================================================
+# PHASE 4: ETS model
+# ==============================================================================
+
+model_ets <- ets(train_ts, model = "AAN", damped = FALSE)
+
+#forecast
+fcst_ets <- forecast(model_ets, h = length(test_ts))
+
+pred_ets <- as.numeric(fcst_ets$mean)
+fit_ets <- as.numeric(fitted(model_ets))
+
+mse_ets <- mean((test_actual - pred_ets)^2)
+cat("MSE:", mse_ets, "AIC:", model_ets$aic, "\n")
+checkresiduals(model_ets)
+
 
 # ==============================================================================
-# PHASE 4: HYBRID PROPHET MODEL (Prophet + ARIMA on Residuals)
+# PHASE 5: GAM (GAM + ARIMA on residuals)
 # ==============================================================================
 
-# 1. Prophet Setup
+#Setup
+t_idx <- 1:length(train_vec)
+df_gam_train <- data.frame(y = as.numeric(train_vec), t = t_idx)
+df_gam_test  <- data.frame(t = (length(train_vec) + 1):n_total)
+
+# Select best model
+g1 <- gam(y ~ t, data = df_gam_train)
+g2 <- gam(y ~ s(t, df=4), data = df_gam_train)
+g3 <- gam(y ~ s(t, df=10), data = df_gam_train)
+model_gam <- list(g1, g2, g3)[[which.min(c(AIC(g1), AIC(g2), AIC(g3)))]]
+
+#Residuals 
+resid_gam <- residuals(model_gam)
+
+par(mfrow=c(2,1))
+plot(resid_gam, type="l", main="GAM Residuals", ylab="Residual", xlab="Time Index")
+abline(h=0, col="red")
+Acf(resid_gam, main="ACF of GAM Residuals")
+par(mfrow=c(1,1))
+print(Box.test(resid_gam, lag = 20, type = "Ljung-Box"))
+
+# arima fit on residual
+model_resid_gam <- auto.arima(resid_gam)
+summary(model_resid_gam)
+
+# re-check residual
+checkresiduals(model_resid_gam)
+
+#Forecast
+pred_base_gam <- predict(model_gam, newdata = df_gam_test)
+fcst_resid_gam <- forecast(model_resid_gam, h = length(test_ts))
+
+pred_gam_hybrid <- as.numeric(pred_base_gam) + as.numeric(fcst_resid_gam$mean)
+fit_gam_hybrid <- as.numeric(fitted(model_gam)) + fitted(model_resid_gam)
+
+mse_gam <- mean((test_actual - pred_gam_hybrid)^2)
+cat("AIC:",model_resid_gam$aic,"MSE:", mse_gam)
+
+
+
+# ==============================================================================
+# PHASE 6: PROPHET (Prophet + ARIMA on residuals)
+# ==============================================================================
+# Setup
 df_prophet <- data.frame(ds = index(train_vec), y = as.numeric(train_vec))
 
 model_prophet <- prophet(df_prophet, 
@@ -146,135 +201,68 @@ model_prophet <- prophet(df_prophet,
 future_prophet <- make_future_dataframe(model_prophet, periods = length(test_vec), freq = "day")
 fcst_prophet_obj <- predict(model_prophet, future_prophet)
 
-# 2. Compute Prophet Residuals
+# Prophet residuals
 fitted_prophet <- fcst_prophet_obj$yhat[1:nrow(df_prophet)]
 resid_prophet <- df_prophet$y - fitted_prophet
 
-# 3. Residual Check (Visual & Test)
+# residual check
 par(mfrow=c(2,1))
-plot(df_prophet$ds, resid_prophet, type="l", main="Prophet Residuals (Raw)", ylab="Residual", xlab="Date")
+plot(df_prophet$ds, resid_prophet, type="l", main="Prophet Residuals", ylab="Residual", xlab="Date")
 abline(h=0, col="red")
 Acf(resid_prophet, main="ACF of Prophet Residuals")
 par(mfrow=c(1,1))
 print(Box.test(resid_prophet, lag = 20, type = "Ljung-Box"))
 
-# 4. Model Residuals with ARIMA
+# residuals with ARIMA
 model_resid_prophet <- auto.arima(resid_prophet)
-
-cat("\n--- ARIMA Structure on Prophet Residuals ---\n")
 summary(model_resid_prophet)
-
-# Final Hybrid Diagnostic
-cat("\n--- Final Diagnostic (Hybrid Prophet) ---\n")
 checkresiduals(model_resid_prophet)
 
-acf(model_resid_prophet$residuals)
-
-# 5. Hybrid Forecast (Base + Residuals)
+#Forecast
 fcst_resid_prophet <- forecast(model_resid_prophet, h = length(test_ts))
 
-# Base Component (Trend/Seasonality)
+# trend/seasonality
 pred_base_prophet <- fcst_prophet_obj$yhat[(n_total - length(test_vec) + 1):n_total]
-# Corrective Component (Residuals)
+
+# residuals
 pred_corr_prophet <- as.numeric(fcst_resid_prophet$mean)
-
 pred_prophet_hybrid <- pred_base_prophet + pred_corr_prophet
-fit_prophet_hybrid <- fitted_prophet + fitted(model_resid_prophet) # For train plot
+fit_prophet_hybrid <- fitted_prophet + fitted(model_resid_prophet)
 
-# 6. Metrics Calculation
+# mse and aic
 mse_prophet <- mean((test_actual - pred_prophet_hybrid)^2)
-# L'AIC del sistema ibrido è dato dalla componente stocastica (ARIMA)
 aic_prophet_hybrid <- model_resid_prophet$aic
 
-cat("Hybrid Prophet -> MSE:", mse_prophet, "\n")
-cat("Hybrid Prophet -> AIC (Residual Component):", aic_prophet_hybrid, "\n")
-
-# ==============================================================================
-# PHASE 5: ETS MODEL (Exponential Smoothing)
-# ==============================================================================
-
-# Model with forced additive trend (AAN)
-model_ets <- ets(train_ts, model = "AAN", damped = FALSE)
-fcst_ets <- forecast(model_ets, h = length(test_ts))
-
-pred_ets <- as.numeric(fcst_ets$mean)
-fit_ets <- as.numeric(fitted(model_ets))
-
-mse_ets <- mean((test_actual - pred_ets)^2)
-cat("MSE:", mse_ets, "| AIC:", model_ets$aic, "\n")
-checkresiduals(model_ets)
+cat("MSE:", mse_prophet, "AIC:",aic_prophet_hybrid )
 
 
 # ==============================================================================
-# PHASE 6: HYBRID GAM MODEL (GAM + ARIMA on Residuals)
+# PHASE 7: result and comparison
 # ==============================================================================
 
-# 1. Setup GAM
-t_idx <- 1:length(train_vec)
-df_gam_train <- data.frame(y = as.numeric(train_vec), t = t_idx)
-df_gam_test  <- data.frame(t = (length(train_vec) + 1):n_total)
-
-# Select best base model
-g1 <- gam(y ~ t, data = df_gam_train)
-g2 <- gam(y ~ s(t, df=4), data = df_gam_train)
-g3 <- gam(y ~ s(t, df=10), data = df_gam_train)
-model_gam <- list(g1, g2, g3)[[which.min(c(AIC(g1), AIC(g2), AIC(g3)))]]
-
-# 2. Residuals and ARIMA Correction
-resid_gam <- residuals(model_gam)
-
-par(mfrow=c(2,1))
-plot(resid_gam, type="l", main="GAM Residuals (Raw)", ylab="Residual", xlab="Time Index")
-abline(h=0, col="red")
-Acf(resid_gam, main="ACF of GAM Residuals")
-par(mfrow=c(1,1))
-
-model_resid_gam <- auto.arima(resid_gam)
-cat("\n--- ARIMA Structure on GAM Residuals ---\n")
-summary(model_resid_gam)
-
-# Final Diagnostic
-cat("\n--- Final Diagnostic (Hybrid GAM) ---\n")
-checkresiduals(model_resid_gam)
-
-# 3. Hybrid Forecast
-pred_base_gam <- predict(model_gam, newdata = df_gam_test)
-fcst_resid_gam <- forecast(model_resid_gam, h = length(test_ts))
-
-pred_gam_hybrid <- as.numeric(pred_base_gam) + as.numeric(fcst_resid_gam$mean)
-fit_gam_hybrid <- as.numeric(fitted(model_gam)) + fitted(model_resid_gam)
-
-mse_gam <- mean((test_actual - pred_gam_hybrid)^2)
-cat("Hybrid GAM -> MSE:", mse_gam, "\n")
-
-
-# ==============================================================================
-# PHASE 7: RESULTS COMPARISON
-# ==============================================================================
-
-# Summary Table
+# table
 results_table <- data.frame(
-  Model = c("ARIMA (0,1,0)", "Hybrid Prophet", "ETS (Trend)", "Hybrid GAM"),
-  AIC_Resid = round(c(model_arima$aic, model_resid_prophet$aic, model_ets$aic, model_resid_gam$aic), 2),
+  Model = c("ARIMA (0,1,0)", "Prophet", "ETS (Trend)", "GAM"),
+  AIC = round(c(model_arima$aic, model_resid_prophet$aic, model_ets$aic, model_resid_gam$aic), 2),
   MSE = round(c(mse_arima, mse_prophet, mse_ets, mse_gam), 5)
 )
-print("--- Performance Comparison Table ---")
+
 print(results_table)
 
-# Prepare Full Vectors for Plotting
+# vector for plot
 full_arima   <- c(as.numeric(fitted(model_arima)), pred_arima)
 full_ets     <- c(fit_ets, pred_ets)
 full_prophet <- c(as.numeric(fit_prophet_hybrid), pred_prophet_hybrid)
 full_gam     <- c(as.numeric(fit_gam_hybrid), pred_gam_hybrid)
 
-# Trim vectors to ensure alignment
+# alignment
 len_target <- length(prices)
 full_arima   <- full_arima[1:len_target]
 full_ets     <- full_ets[1:len_target]
 full_prophet <- full_prophet[1:len_target]
 full_gam     <- full_gam[1:len_target]
 
-# Comprehensive Comparison Plot
+# Plot
 plot(index(prices), as.numeric(prices), type="l", col="lightgray", lwd=2,
      main="Model Comparison: In-Sample Fit & Out-of-Sample Forecast",
      ylab="Price (€)", xlab="Date")
@@ -288,11 +276,11 @@ abline(v=index(prices)[split_idx], col="black", lty=2, lwd=1.5)
 text(index(prices)[split_idx], min(prices), " Test Set Start", pos=4, cex=0.8)
 
 legend("topleft", 
-       legend=c("Actual Data", "ARIMA", "Hybrid Prophet", "ETS", "Hybrid GAM"),
+       legend=c("Actual Data", "ARIMA", "Prophet", "ETS", "GAM"),
        col=c("lightgray", "red", "blue", "darkgreen", "purple"), 
        lwd=2, bty="n", cex=0.8)
 
-# Zoom on Test Set
+# zoom on Test Set
 plot(index(test_vec), test_actual, type="l", col="black", lwd=2,
      main="Zoom: Test Set Forecasting Accuracy",
      ylab="Price (€)", xlab="Date", 
@@ -304,48 +292,45 @@ lines(index(test_vec), pred_ets, col="darkgreen", lwd=2)
 lines(index(test_vec), pred_gam_hybrid, col="purple", lwd=2)
 
 legend("topleft", 
-       legend=c("Actual", "ARIMA", "Hybrid Prophet", "ETS", "Hybrid GAM"),
+       legend=c("Actual", "ARIMA", "Prophet", "ETS", "GAM"),
        col=c("black", "red", "blue", "darkgreen", "purple"), 
        lwd=2, bty="n", cex=0.8)
 
 
 # ==============================================================================
-# PHASE 8: REAL FUTURE FORECAST (NEXT 30 DAYS)
-# Refitting the winning model (Hybrid Prophet) on the full dataset
+# PHASE 8: forecast 30 day next
+# Refitting prophet that win before
 # ==============================================================================
 
-# 1. Prepare Full Dataset
+#full dataset
 df_full <- data.frame(ds = index(prices), y = as.numeric(prices))
 
-# 2. Fit Full Prophet Model
+#Fit Full Prophet Model
 final_prophet <- prophet(df_full, 
                          daily.seasonality = FALSE, 
                          yearly.seasonality = FALSE,
                          weekly.seasonality = TRUE)
 
-# 3. Fit ARIMA on Full Residuals
+# ARIMA on full residuals
 in_sample_fcst <- predict(final_prophet, df_full)
 full_residuals <- df_full$y - in_sample_fcst$yhat
 
 final_resid_arima <- auto.arima(full_residuals)
-cat("\n--- Final Model: Residual ARIMA Structure ---\n")
 summary(final_resid_arima)
+checkresiduals(final_resid_arima)
 
-# 4. Generate Future Forecast (30 days)
 days_ahead <- 30
 
-# Component A: Prophet (Trend/Seasonality)
+# trend/seasonality forecast
 future_dates_final <- make_future_dataframe(final_prophet, periods = days_ahead, freq = "day")
 fcst_prophet_final <- predict(final_prophet, future_dates_final)
 future_base <- tail(fcst_prophet_final, days_ahead)
 
-# Component B: ARIMA (Error Correction)
+# ARIMA forecast
 fcst_resid_final <- forecast(final_resid_arima, h = days_ahead, level = 95)
-
-# 5. Combine and Calculate Confidence Intervals
 final_mean <- future_base$yhat + as.numeric(fcst_resid_final$mean)
 
-# Combine Sigmas for 95% CI
+# IC sigma trand/seasonality + sigma ARIMA
 sigma_p <- (future_base$yhat_upper - future_base$yhat_lower) / (2 * 1.96)
 sigma_a <- (fcst_resid_final$upper[,1] - fcst_resid_final$lower[,1]) / (2 * 1.96)
 sigma_tot <- sqrt(sigma_p^2 + sigma_a^2)
@@ -353,16 +338,15 @@ sigma_tot <- sqrt(sigma_p^2 + sigma_a^2)
 final_lower <- final_mean - (1.96 * sigma_tot)
 final_upper <- final_mean + (1.96 * sigma_tot)
 
-# Prepare Plotting Data
+# df for plot
 df_future <- data.frame(
   Date = as.Date(future_base$ds),
   Price = final_mean,
   Lower = final_lower,
   Upper = final_upper,
-  Type = "Forecast"
-)
+  Type = "Forecast")
 
-# Add historical context (last 6 months)
+# history for plot
 df_history <- data.frame(
   Date = as.Date(tail(df_full$ds, 120)),
   Price = tail(df_full$y, 120),
@@ -372,26 +356,26 @@ df_history <- data.frame(
 
 plot_data <- rbind(df_history, df_future)
 
-# Final Plot
+# final plot
 y_lims <- c(min(plot_data$Price, plot_data$Lower, na.rm=T)*0.98, 
             max(plot_data$Price, plot_data$Upper, na.rm=T)*1.02)
 
 plot(plot_data$Date, plot_data$Price, type="n", ylim=y_lims,
-     main=paste("Intesa Sanpaolo: Hybrid Forecast (Next", days_ahead, "Days)"),
+     main=paste("Intesa Sanpaolo: Forecast (Next", days_ahead, "Days)"),
      xlab="Date", ylab="Price (€)")
 
-# Confidence Interval Area
+# ic area
 idx_fut <- which(plot_data$Type == "Forecast")
 polygon(c(plot_data$Date[idx_fut], rev(plot_data$Date[idx_fut])),
         c(plot_data$Lower[idx_fut], rev(plot_data$Upper[idx_fut])),
         col = rgb(0, 0, 1, 0.2), border = NA)
 
-# Lines
+
 idx_hist <- which(plot_data$Type == "History")
 lines(plot_data$Date[idx_hist], plot_data$Price[idx_hist], col="black", lwd=2)
 lines(plot_data$Date[idx_fut], plot_data$Price[idx_fut], col="blue", lwd=3)
 
-# Points and Labels
+# points and labels
 last_hist_val <- tail(df_history$Price, 1)
 last_hist_date <- tail(df_history$Date, 1)
 points(last_hist_date, last_hist_val, pch=19, col="black")
