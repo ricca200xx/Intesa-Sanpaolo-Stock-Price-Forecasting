@@ -12,7 +12,7 @@ for (lib in libs) {
   library(lib, character.only = TRUE)
 }
 
-### 2. CUSTOM FUNCTIONS
+# custon funtion
 arima.aic.manual <- function(mydata, intord = 0, seasord = 0){
   aicm <- matrix(0,5,5)
   
@@ -330,7 +330,7 @@ future_base <- tail(fcst_prophet_final, days_ahead)
 fcst_resid_final <- forecast(final_resid_arima, h = days_ahead, level = 95)
 final_mean <- future_base$yhat + as.numeric(fcst_resid_final$mean)
 
-# IC sigma trand/seasonality + sigma ARIMA
+# IC sigma trand/seasonality (prophet) + sigma ARIMA
 sigma_p <- (future_base$yhat_upper - future_base$yhat_lower) / (2 * 1.96)
 sigma_a <- (fcst_resid_final$upper[,1] - fcst_resid_final$lower[,1]) / (2 * 1.96)
 sigma_tot <- sqrt(sigma_p^2 + sigma_a^2)
@@ -351,8 +351,7 @@ df_history <- data.frame(
   Date = as.Date(tail(df_full$ds, 120)),
   Price = tail(df_full$y, 120),
   Lower = NA, Upper = NA,
-  Type = "History"
-)
+  Type = "History")
 
 plot_data <- rbind(df_history, df_future)
 
