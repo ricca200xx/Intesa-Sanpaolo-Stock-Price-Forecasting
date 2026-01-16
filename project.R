@@ -179,12 +179,15 @@ checkresiduals(model_resid_gam)
 pred_base_gam <- predict(model_gam, newdata = df_gam_test)
 fcst_resid_gam <- forecast(model_resid_gam, h = length(test_ts))
 
-pred_gam_hybrid <- as.numeric(pred_base_gam) + as.numeric(fcst_resid_gam$mean)
+gam_pred_arima <- as.numeric(pred_base_gam) + as.numeric(fcst_resid_gam$mean)
 fit_gam_hybrid <- as.numeric(fitted(model_gam)) + fitted(model_resid_gam)
 
-mse_gam <- mean((test_actual - pred_gam_hybrid)^2)
-cat("AIC:",model_resid_gam$aic,"MSE:", mse_gam)
+#aic calculation and mse
+# AIC_tot = AIC_arima + 2 * (Parametri GAM)
+aic_gam_final <- model_resid_gam$aic + 2*(11)
 
+mse_gam <- mean((test_actual - gam_pred_arima)^2)
+cat("AIC:", aic_gam_final, "mse:", mse_gam)
 
 
 # ==============================================================================
@@ -231,9 +234,9 @@ fit_prophet_hybrid <- fitted_prophet + fitted(model_resid_prophet)
 
 # mse and aic
 mse_prophet <- mean((test_actual - pred_prophet_hybrid)^2)
-aic_prophet_hybrid <- model_resid_prophet$aic
+aic_profet_arima <- model_resid_prophet$aic + 2*length(model_prophet$params)
 
-cat("MSE:", mse_prophet, "AIC:",aic_prophet_hybrid )
+cat("MSE:", mse_prophet, "AIC:",aic_profet_arima )
 
 
 # ==============================================================================
@@ -243,7 +246,7 @@ cat("MSE:", mse_prophet, "AIC:",aic_prophet_hybrid )
 # table
 results_table <- data.frame(
   Model = c("ARIMA (0,1,0)", "Prophet", "ETS (Trend)", "GAM"),
-  AIC = round(c(model_arima$aic, model_resid_prophet$aic, model_ets$aic, model_resid_gam$aic), 2),
+  AIC = round(c(model_arima$aic, aic_profet_arima, model_ets$aic, aic_gam_final), 2),
   MSE = round(c(mse_arima, mse_prophet, mse_ets, mse_gam), 5)
 )
 
@@ -253,7 +256,7 @@ print(results_table)
 full_arima   <- c(as.numeric(fitted(model_arima)), pred_arima)
 full_ets     <- c(fit_ets, pred_ets)
 full_prophet <- c(as.numeric(fit_prophet_hybrid), pred_prophet_hybrid)
-full_gam     <- c(as.numeric(fit_gam_hybrid), pred_gam_hybrid)
+full_gam     <- c(as.numeric(fit_gam_hybrid), gam_pred_arima)
 
 # alignment
 len_target <- length(prices)
@@ -289,7 +292,7 @@ plot(index(test_vec), test_actual, type="l", col="black", lwd=2,
 lines(index(test_vec), pred_arima, col="red", lwd=2)
 lines(index(test_vec), pred_prophet_hybrid, col="blue", lwd=2)
 lines(index(test_vec), pred_ets, col="darkgreen", lwd=2)
-lines(index(test_vec), pred_gam_hybrid, col="purple", lwd=2)
+lines(index(test_vec), gam_pred_arima, col="purple", lwd=2)
 
 legend("topleft", 
        legend=c("Actual", "ARIMA", "Prophet", "ETS", "GAM"),
