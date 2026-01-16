@@ -234,9 +234,7 @@ fit_prophet_hybrid <- fitted_prophet + fitted(model_resid_prophet)
 
 # mse and aic
 mse_prophet <- mean((test_actual - pred_prophet_hybrid)^2)
-aic_profet_arima <- model_resid_prophet$aic + 2*length(model_prophet$params)
-
-cat("MSE:", mse_prophet, "AIC:",aic_profet_arima )
+cat("MSE:", mse_prophet)
 
 
 # ==============================================================================
@@ -246,7 +244,7 @@ cat("MSE:", mse_prophet, "AIC:",aic_profet_arima )
 # table
 results_table <- data.frame(
   Model = c("ARIMA (0,1,0)", "Prophet", "ETS (Trend)", "GAM"),
-  AIC = round(c(model_arima$aic, aic_profet_arima, model_ets$aic, aic_gam_final), 2),
+  AIC = round(c(model_arima$aic, NaN , model_ets$aic, aic_gam_final), 2),
   MSE = round(c(mse_arima, mse_prophet, mse_ets, mse_gam), 5)
 )
 
