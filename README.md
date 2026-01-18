@@ -4,9 +4,6 @@
 ![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%203.0-lightgrey.svg)
 ![Status](https://img.shields.io/badge/Status-Completed-success.svg)
 
-> **University of Padua** > Department of Mathematics "Tullio Levi-Civita"  
-> Course: *Business Economic and Financial Data (AA. 25-26)*
-
 ## 📄 Project Overview
 This project aims to analyze and forecast the stock price evolution of **Intesa Sanpaolo S.p.A. (ISP.MI)** using advanced statistical and econometric methods. 
 
