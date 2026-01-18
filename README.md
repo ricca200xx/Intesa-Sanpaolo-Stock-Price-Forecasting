@@ -15,7 +15,7 @@ We compared four distinct forecasting approaches—ranging from traditional benc
 **Final Goal:** Produce a reliable 30-day forecast for January 2026.
 
 ## 📊 Dataset
-* **Source:** Yahoo! [cite_start]Finance (`quantmod`).
+* **Source:** Yahoo!Finance (`quantmod`).
 * **Ticker:** `ISP.MI`.
 * **Timeframe:** 5 Years (ending Jan 1, 2026)].
 * **Target Variable:** Adjusted Close Price.
