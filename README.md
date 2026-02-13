@@ -1,17 +1,17 @@
-# 📈 Intesa Sanpaolo Stock Price Forecasting
+# Intesa Sanpaolo Stock Price Forecasting
 
 ![R](https://img.shields.io/badge/Language-R-blue.svg)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%203.0-lightgrey.svg)
 ![Status](https://img.shields.io/badge/Status-Completed-success.svg)
 
-## 📄 Project Overview
+## Project Overview
 This project aims to analyze and forecast the stock price evolution of **Intesa Sanpaolo S.p.A. (ISP.MI)** using advanced statistical and econometric methods. 
 
 We compared four distinct forecasting approaches—ranging from traditional benchmarks to modern regression-based algorithms—to identify the model that best captures the non-linear dynamics and stochastic nature of the banking sector. A key feature of this analysis is the implementation of **Hybrid Models**, where deterministic trends are modeled via GAM or Prophet, and stochastic residuals are corrected using ARIMA processes.
 
 **Final Goal:** Produce a reliable 30-day forecast for January 2026.
 
-## 📊 Dataset
+## Dataset
 * **Source:** Yahoo!Finance (`quantmod`).
 * **Ticker:** `ISP.MI`.
 * **Timeframe:** 5 Years (ending Jan 1, 2026)].
@@ -41,7 +41,7 @@ We employed a rigorous "Train-Test" split strategy (80% Train, 20% Test) to eval
 * **Components:** Piecewise linear trend + Weekly seasonality + ARIMA(1,0,2) for residuals.
 * **Performance:** Achieved the lowest error by capturing both the deterministic trend and short-term shocks.
 
-## 🏆 Results & Comparison
+## Results & Comparison
 
 The models were evaluated based on **Mean Squared Error (MSE)** on the unseen Test Set.
 
@@ -54,7 +54,7 @@ The models were evaluated based on **Mean Squared Error (MSE)** on the unseen Te
 
 >**Key Finding:** Traditional models (ARIMA/ETS) failed to capture the strong bullish rally of late 2025. The **Prophet model**, specifically when corrected with ARIMA residuals to handle autocorrelation, provided the most accurate trajectory.
 
-## 🔮 Final Forecast (Next 30 Days)
+## Final Forecast (Next 30 Days)
 Using the fully calibrated **Hybrid Prophet** model on the entire dataset:
 * **Outlook:** Bullish (Positive Trend) 📈.
 * **Prediction:** The price is expected to break the **€6.00** threshold.
