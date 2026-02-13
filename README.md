@@ -36,7 +36,7 @@ We employed a rigorous "Train-Test" split strategy (80% Train, 20% Test) to eval
 * **Formula:** $y_t = s(t) + \eta_t$ where $\eta_t$ is an AR(1) process.
 * **Insight:** Uses splines ($df=10$) to model non-linear trends flexibly.
 
-### 4. Hybrid Prophet (Winner 🏆)
+### 4. Hybrid Prophet
 * **Structure:** Decomposable time series model developed by Meta, enhanced with residual correction.
 * **Components:** Piecewise linear trend + Weekly seasonality + ARIMA(1,0,2) for residuals.
 * **Performance:** Achieved the lowest error by capturing both the deterministic trend and short-term shocks.
@@ -47,20 +47,20 @@ The models were evaluated based on **Mean Squared Error (MSE)** on the unseen Te
 
 | Model | AIC | MSE (Test Set) | Performance |
 | :--- | :--- | :--- | :--- |
-| **Hybrid Prophet** | *N/A (Bayesian)* | **0.6723** | ⭐ **Best Fit** |
-| **Hybrid GAM** | -4092.30 | 0.8336 | 🥈 Runner-up |
-| **ETS (Trend)** | 84.38 | 1.1803 | 🥉 Conservative |
-| **ARIMA (0,1,0)** | -4065.80 | 1.8487 | ❌ Baseline |
+| **Hybrid Prophet** | *N/A (Bayesian)* | **0.6723** | **Best Fit** |
+| **Hybrid GAM** | -4092.30 | 0.8336 | Runner-up |
+| **ETS (Trend)** | 84.38 | 1.1803 | Conservative |
+| **ARIMA (0,1,0)** | -4065.80 | 1.8487 | Baseline |
 
 >**Key Finding:** Traditional models (ARIMA/ETS) failed to capture the strong bullish rally of late 2025. The **Prophet model**, specifically when corrected with ARIMA residuals to handle autocorrelation, provided the most accurate trajectory.
 
 ## Final Forecast (Next 30 Days)
 Using the fully calibrated **Hybrid Prophet** model on the entire dataset:
-* **Outlook:** Bullish (Positive Trend) 📈.
+* **Outlook:** Bullish.
 * **Prediction:** The price is expected to break the **€6.00** threshold.
 * **Reliability:** Ljung-Box test on final residuals ($p > 0.05$) confirms White Noise behavior, ensuring statistical validity.
 
-## 💻 Installation & Usage
+## Installation & Usage
 
 ### Prerequisites
 Ensure you have R installed. The script requires the following libraries:
